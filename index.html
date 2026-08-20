@@ -1,0 +1,4048 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS KMS cluster rotation scenarios</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f6f7f8;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f5;
+  --text: #17202a;
+  --secondary: #4d5966;
+  --border: #c9d0d7;
+  --accent: #245ea8;
+  --accent-soft: #e7f0fb;
+  --good: #176b3a;
+  --good-soft: #e8f5ed;
+  --warn: #8a5700;
+  --warn-soft: #fff4d6;
+  --bad: #a12a2a;
+  --bad-soft: #fdeaea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(36, 94, 168, 0.3);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.page {
+  width: min(1500px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+h2 {
+  margin: 0;
+  font-size: 21px;
+}
+
+h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+p {
+  margin: 6px 0;
+}
+
+.intro {
+  max-width: 960px;
+  color: var(--secondary);
+}
+
+.note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field label {
+  color: var(--secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+select,
+button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 10px;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.scenario-head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.scenario-summary {
+  color: var(--secondary);
+}
+
+.step-box {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--accent);
+}
+
+.step-box.good {
+  border-left-color: var(--good);
+}
+
+.step-box.warn {
+  border-left-color: var(--warn);
+}
+
+.step-box.bad {
+  border-left-color: var(--bad);
+}
+
+.step-title {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.step-text {
+  margin-top: 5px;
+  color: var(--secondary);
+}
+
+.outcome {
+  margin-top: 9px;
+  font-weight: 600;
+}
+
+.patch-actions {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.patch-action {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-alt);
+}
+
+.patch-action h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.patch-action ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.patch-action li + li {
+  margin-top: 3px;
+}
+
+.change-summary {
+  margin: -2px 0 10px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+
+.change-group + .change-group {
+  margin-top: 12px;
+}
+
+.change-group h5,
+.change-group h6 {
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+
+.scope {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 1px;
+  border: 1px solid var(--border);
+  background: var(--border);
+}
+
+.scope-item {
+  min-width: 0;
+  padding: 9px 10px;
+  background: var(--surface);
+}
+
+.scope-label {
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scope-value {
+  margin-top: 3px;
+}
+
+.section {
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.section-note {
+  margin: -4px 0 10px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.step-changes-table {
+  min-width: 620px;
+}
+
+.step-changes-table th:nth-child(1) {
+  width: 31%;
+}
+
+.step-changes-table th:nth-child(2) {
+  width: 29%;
+}
+
+.step-changes-table th:nth-child(3) {
+  width: 40%;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: var(--secondary);
+  background: var(--surface-alt);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.field-table th {
+  width: 240px;
+}
+
+.empty {
+  color: var(--secondary);
+  font-style: italic;
+}
+
+.state {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.state.active,
+.state.enabled,
+.state.ready,
+.state.published {
+  color: var(--good);
+  background: var(--good-soft);
+}
+
+.state.prepared,
+.state.pending,
+.state.pendingdeletion,
+.state.tainted,
+.state.stale {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.state.old,
+.state.failed,
+.state.disabled,
+.state.revoked,
+.state.not-ready {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.tag-list {
+  display: grid;
+  grid-template-columns: max-content minmax(180px, 1fr);
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.tag-list dt {
+  color: var(--secondary);
+}
+
+.tag-list dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.subsection {
+  margin-top: 16px;
+}
+
+.subsection h4 {
+  margin: 0 0 7px;
+  font-size: 14px;
+}
+
+.footer {
+  color: var(--secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 1050px) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .scope {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .page {
+    padding: 14px;
+  }
+
+  .controls {
+    grid-template-columns: 1fr;
+  }
+
+  .scope {
+    grid-template-columns: 1fr;
+  }
+
+  .field-table th {
+    width: 170px;
+  }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="page-header">
+    <h1>AWS KMS cluster rotation scenarios</h1>
+    <p class="intro">
+      One key per cluster means one physical KMS key for each signing slot,
+      shared by every SPIRE server. Old and replacement keys can both exist
+      while a rotation is in progress, but only one key is active for each
+      authority type. This page covers startup, rotation, recovery, migration,
+      and cleanup.
+    </p>
+    <p class="note">
+      The account, ARNs, UUIDs, timestamps, and authority IDs below are complete
+      example values. They are not values from a production environment.
+    </p>
+  </header>
+
+  <section class="controls" aria-label="Scenario controls">
+    <div class="field">
+      <label for="scenarioSelect">Scenario</label>
+      <select id="scenarioSelect"></select>
+    </div>
+    <div class="field">
+      <label for="stepSelect">Step</label>
+      <select id="stepSelect"></select>
+    </div>
+    <button id="previousButton" type="button">Previous</button>
+    <button id="nextButton" type="button">Next</button>
+  </section>
+
+  <div id="scenarioView">
+    <section class="scenario-head">
+      <h2 id="scenarioTitle"></h2>
+      <p class="scenario-summary" id="scenarioSummary"></p>
+    </section>
+
+    <section class="step-box" id="stepBox" aria-live="polite">
+      <div class="step-title" id="stepTitle"></div>
+      <p class="step-text" id="stepText"></p>
+      <p class="outcome" id="stepOutcome"></p>
+    </section>
+
+    <section class="section" aria-labelledby="patchDetailsHeading">
+      <h3 id="patchDetailsHeading">What happens in this step</h3>
+      <p class="section-note">
+        The list explains the work in plain English. The tables show exact values.
+        Values not listed did not change.
+      </p>
+      <div class="patch-actions" id="patchActions"></div>
+      <div class="subsection">
+        <h4 id="stepChangesHeading">Values changed by this step</h4>
+        <p class="change-summary" id="stepChangeSummary" aria-live="polite"></p>
+        <div id="stepChanges"></div>
+      </div>
+      <div class="subsection" id="stepOperationsSection" hidden>
+        <h4 id="stepOperationsHeading">Values changed temporarily during this step</h4>
+        <p class="section-note">
+          These values changed while the step was running, but returned to their
+          original value or were replaced before it finished.
+        </p>
+        <div id="stepOperations"></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="scopeHeading">
+      <h3 id="scopeHeading">Current cluster settings and AWS calls</h3>
+      <div class="scope" id="scope"></div>
+    </section>
+
+    <section class="section">
+      <h3>SPIRE servers</h3>
+      <div class="table-wrap" id="replicas"></div>
+    </section>
+
+    <div class="two-column">
+      <section class="section">
+        <h3>Kubernetes Lease</h3>
+        <p class="section-note">The Lease decides which server may change keys. It also keeps the information needed after a crash. Missing fields are shown as (not set).</p>
+        <div class="table-wrap" id="lease"></div>
+      </section>
+
+      <section class="section">
+        <h3>CA journal and public keys</h3>
+        <p class="section-note">The CA journal is the shared database record for current and prepared CAs. SPIRE saves it before loading a signer. The ARN column shows the KMS key used for signing; the journal stores the public key or certificate, not the ARN.</p>
+        <div class="table-wrap" id="journal"></div>
+        <div class="subsection">
+          <h4>Published certificates and JWKs</h4>
+          <div class="table-wrap" id="trust"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="section">
+      <h3>AWS KMS keys, including old keys</h3>
+      <p class="section-note">
+        Full physical ARNs and every SPIRE-managed tag are visible. A key in
+        PendingDeletion cannot sign, even though AWS waits seven days before
+        permanent deletion.
+      </p>
+      <div class="table-wrap" id="keys"></div>
+      <div class="subsection">
+        <h4>KMS aliases used by each cluster</h4>
+        <div class="table-wrap" id="aliases"></div>
+      </div>
+    </section>
+  </div>
+
+  <p class="footer">
+    This example enables X.509 and JWT. WIT-SVID signing is disabled, so it has
+    no journal, KMS key, or alias rows here.
+  </p>
+</main>
+
+<script>
+"use strict";
+
+var TRUST_DOMAIN = "example.org";
+var DEFAULT_CLUSTER = "prod-cluster";
+var REGION = "us-west-2";
+var ACCOUNT = "123456789012";
+var DEFAULT_LEASE = "spire-server-ca-rotation-fc56a7aecf26";
+var LEASE_NAMESPACE = "spire";
+
+var ANNOTATION = {
+  acquisitionToken: "spire.spiffe.io/rotation-acquisition-token",
+  acquisitionPhase: "spire.spiffe.io/rotation-acquisition-phase",
+  completionToken: "spire.spiffe.io/rotation-completion-token",
+  preparedAuthorities: "spire.spiffe.io/rotation-prepared-authorities",
+  pendingCreates: "spire.spiffe.io/rotation-pending-creates",
+  taintTombstones: "spire.spiffe.io/rotation-taint-tombstones"
+};
+
+var TOKEN = {
+  bootstrap: "7b21f0d3-63b8-4ec2-8421-9ba4c0d10487",
+  bootstrapJWT: "c187d18b-fb73-42aa-a489-e54be04357e0",
+  prepareB: "c944a1e8-b02b-49c7-8262-513204f28473",
+  activateB: "2d8e66b0-f3c1-4dc5-b2fb-299e2cd36ca1",
+  replaceA: "42b77089-d501-45f1-901c-e16906beaf11",
+  activateA2: "78be44d6-06bf-459c-9b80-d5672c118e32",
+  revokeJWT: "64d7d28a-7af1-486c-a7c8-3f247876cd4f",
+  oldClusterJWT: "827c15a1-7f03-4894-a44a-4f8c4e0ea595",
+  aliasRetry: "de4d0451-6ed1-4196-8f03-4c41ea8a05aa",
+  recovery: "5d1e1a82-72a5-43fb-a4ad-a66593638ac2",
+  adoptCreate: "13b36b21-e253-4dd6-a5b7-23166045a1bb",
+  completionX509: "fa9834aa-66b9-44c4-a11a-71845874225b",
+  completion0: "01f3aa92-14de-46ad-a087-6ea8dbaf2770",
+  completion1: "8842cd17-4df2-4a99-9c4f-9130041b1342",
+  completion2: "56b0e9aa-3761-419d-8678-994b78c1ec20",
+  completion3: "a17d44f0-20f2-4d1e-aad8-ce6af8a7d148",
+  completion4: "3e9c02b5-f62d-4667-8112-63e179258332",
+  completion5: "d5e2d50f-cdbc-43d8-9fe7-47c7ef8ecb69",
+  peerCompletion: "f4532528-2de2-4b68-93a7-3b749591ad80"
+};
+
+var AUTHORITY = {
+  x509A1: "9f3a4b52d6e78091aa12bb34cc56dd78ee90c2e1",
+  x509B1: "4c7d8e9fa1b2c3d4e5f60718293a4b5c6d7e8b21",
+  x509A2: "6e2b3c4d5e6f708192a3b4c5d6e7f8091a2b77ad",
+  jwtA1: "Jk3qW1csEd9H8wL4tAG7v0Qn6F2mR5pY",
+  jwtB1: "Zp8rT4ydBm7Q0vK9sFw2Xa5Ce6Nj1Lu3",
+  jwtOld: "Hf6mC9qeVb3T1xW8sJp4Ra0Ln2Uy7Zi5",
+  migrationX509One: "e12166208d2233445566778899aabbccddeeff01",
+  migrationX509Two: "e22277319e33445566778899aabbccddeeff0012",
+  migrationJWTOne: "R4m8C2y6P0s3V7x1Z5b9Dh2J6k0N4q8S",
+  migrationJWTTwo: "S5n9D3z7Q1t4W8y2A6c0Eg3K7m1P5r9T"
+};
+
+var KEY = {
+  K1: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/1a2b3c4d-9e8f-4a01-b2c3-d4e5f6a7c3a1",
+    fingerprint: "67fe82e07f3f406c3f365868b43eb09fd9a8614f9d85a8a046d7dd2802a62a11"
+  },
+  K2: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/2b3c4d5e-8f9a-4b12-c3d4-e5f6a7b8d4b2",
+    fingerprint: "548e8af04c5621f4c4c75c1d50caf2e1a542523340e3359845f8c042a03f91cc"
+  },
+  K3: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/3c4d5e6f-7a8b-4c23-d4e5-f6a7b8c9e5c3",
+    fingerprint: "173d61f96426bbb5f5e7be3d96a0ba4b89aa17ba49fa4b23867a7b3b51736dd4"
+  },
+  K4: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/4d5e6f7a-6b7c-4d34-e5f6-a7b8c9d0f6d4",
+    fingerprint: "f5416512755d4aa8fdcce784121a8acb507b7d9b19db96831db5a74aef64ade2"
+  },
+  K5: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/5e6f7a8b-5c6d-4e45-f6a7-b8c9d0e1a7e5",
+    fingerprint: "f5ff49d767bd8be9523e75fcae2eec46324fcf232140e45eea11c7c748407b6d"
+  },
+  K6: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/6f7a8b9c-4d5e-4f56-a7b8-c9d0e1f2b8f6",
+    fingerprint: "52745c693ea53db85403f79dfe50bcb6aa77278ccadea1b79e2ffc700fb5ec48"
+  },
+  K7: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/7a8b9c0d-3e4f-4a67-b8c9-d0e1f2a3c9a7",
+    fingerprint: "6cc0dd2c0c9064bd16d19b99741dcaf8640ca42283e15f8c8c2dd1945afac7f4"
+  },
+  K8: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/8b9c0d1e-2f3a-4b78-c9d0-e1f2a3b4d0b8",
+    fingerprint: "60be9861756dff1b620c2fa85a45fa08fe6ebc6342887562f689361e434040db"
+  },
+  K9: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/9c0d1e2f-1a2b-4c89-d0e1-f2a3b4c5eb09",
+    fingerprint: "64df2ed7c11a8f1223f459175fcfec313628fdf79b504684afcf562716266e24"
+  },
+  K10: {
+    arn: "arn:aws:kms:us-west-2:123456789012:key/ad1e2f30-0b1c-4d90-e1f2-a3b4c5d6fc10",
+    fingerprint: "938692646da68725a780fb7c86f98bf89950f076972b48874a05593aa44b0f38"
+  }
+};
+
+var BOOT_ID = {
+  server0: "spire-server-0_5f9e4a37-fcb0-4d7d-ae26-48e5fbe21047",
+  server1: "spire-server-1_b3a764c8-305a-4de0-82f7-253d90e2b4ae",
+  server2: "spire-server-2_0c4d819e-bb20-47d2-9f43-94179196f164",
+  server0Restarted: "spire-server-0_af1242d8-e80e-466a-aa97-56f28e7f49a3"
+};
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+var activeStepOperations = null;
+
+function traceOperation(label, state, mutate) {
+  var before = activeStepOperations ? clone(state) : null;
+  mutate();
+  if (activeStepOperations) {
+    activeStepOperations.push({
+      label: label,
+      beforeState: before,
+      state: clone(state)
+    });
+  }
+}
+
+function aliasFor(logicalKey, clusterId) {
+  return "alias/SPIRE_SERVER/example_org/" + clusterId + "/" + logicalKey;
+}
+
+function emptyAnnotations() {
+  var result = {};
+  Object.keys(ANNOTATION).forEach(function (name) {
+    result[ANNOTATION[name]] = "";
+  });
+  return result;
+}
+
+function newLease(name) {
+  return {
+    exists: true,
+    apiVersion: "coordination.k8s.io/v1",
+    kind: "Lease",
+    namespace: LEASE_NAMESPACE,
+    name: name,
+    resourceVersion: "12000",
+    holderIdentity: "",
+    leaseDurationSeconds: "",
+    acquireTime: "",
+    renewTime: "",
+    leaseTransitions: 0,
+    annotations: emptyAnnotations()
+  };
+}
+
+function bumpLeaseVersion(state) {
+  if (!state.lease.exists) {
+    return;
+  }
+  state.lease.resourceVersion = String(Number(state.lease.resourceVersion || "12000") + 1);
+}
+
+function renewLease(state, at) {
+  traceOperation("Renew the Lease", state, function () {
+    state.lease.renewTime = at;
+    bumpLeaseVersion(state);
+  });
+}
+
+function newReplica(name, bootId) {
+  return {
+    name: name,
+    bootId: bootId,
+    ready: true,
+    leaseHolder: false,
+    x509: null,
+    jwt: null,
+    observedCompletion: "",
+    status: "Waiting for cluster state"
+  };
+}
+
+function baseState(clusterId, leaseName) {
+  return {
+    scope: {
+      plugin: "aws_kms_cluster",
+      trustDomain: TRUST_DOMAIN,
+      clusterId: clusterId,
+      keyIdentifier: clusterId,
+      account: ACCOUNT,
+      region: REGION,
+      requireExistingJournal: "false",
+      allowLeaseCreation: "false"
+    },
+    replicas: [
+      newReplica("spire-server-0", BOOT_ID.server0),
+      newReplica("spire-server-1", BOOT_ID.server1),
+      newReplica("spire-server-2", BOOT_ID.server2)
+    ],
+    lease: newLease(leaseName),
+    relatedLeases: [],
+    journal: {
+      selectedId: "",
+      activeX509AuthorityId: "",
+      rows: []
+    },
+    trust: [],
+    keys: [],
+    aliases: [],
+    counters: {
+      createKey: 0,
+      scheduleDeletion: 0
+    }
+  };
+}
+
+function baseTags(clusterId, logicalKey, lastUpdate) {
+  return {
+    "spire-server-td": TRUST_DOMAIN,
+    "spire-server-id": clusterId,
+    "spire-key-id": logicalKey,
+    "spire-active": "true",
+    "spire-last-update": lastUpdate
+  };
+}
+
+function createdTags(clusterId, logicalKey, lastUpdate, createToken) {
+  var tags = baseTags(clusterId, logicalKey, lastUpdate);
+  tags["spire-create-token"] = createToken;
+  return tags;
+}
+
+function addKey(state, keyName, logicalKey, tags, note) {
+  traceOperation("AWS KMS creates the key for " + logicalKey, state, function () {
+    state.keys.push({
+      name: keyName,
+      logicalKey: logicalKey,
+      arn: KEY[keyName].arn,
+      fingerprint: KEY[keyName].fingerprint,
+      keySpec: "ECC_NIST_P256",
+      keyUsage: "SIGN_VERIFY",
+      state: "Enabled",
+      deletionDate: "",
+      tags: clone(tags),
+      note: note || ""
+    });
+    state.counters.createKey += 1;
+  });
+}
+
+function addExistingKey(state, keyName, logicalKey, tags, note) {
+  state.keys.push({
+    name: keyName,
+    logicalKey: logicalKey,
+    arn: KEY[keyName].arn,
+    fingerprint: KEY[keyName].fingerprint,
+    keySpec: "ECC_NIST_P256",
+    keyUsage: "SIGN_VERIFY",
+    state: "Enabled",
+    deletionDate: "",
+    tags: clone(tags),
+    note: note || ""
+  });
+}
+
+function findKey(state, keyName) {
+  return state.keys.find(function (item) {
+    return item.name === keyName;
+  });
+}
+
+function setAlias(state, logicalKey, keyName, clusterId) {
+  traceOperation("Point the alias at the key for " + logicalKey, state, function () {
+    var alias = aliasFor(logicalKey, clusterId || state.scope.clusterId);
+    var current = state.aliases.find(function (item) {
+      return item.alias === alias;
+    });
+    if (current) {
+      current.targetArn = keyName ? KEY[keyName].arn : "";
+      return;
+    }
+    state.aliases.push({
+      alias: alias,
+      targetArn: keyName ? KEY[keyName].arn : ""
+    });
+  });
+}
+
+function signer(logicalKey, keyName, authorityId) {
+  return {
+    logicalKey: logicalKey,
+    arn: KEY[keyName].arn,
+    authorityId: authorityId
+  };
+}
+
+function setAllSigners(state, x509Signer, jwtSigner, status) {
+  state.replicas.forEach(function (replica) {
+    replica.x509 = clone(x509Signer);
+    replica.jwt = clone(jwtSigner);
+    replica.status = status;
+  });
+}
+
+function acquire(state, replicaIndex, token, at, phase) {
+  var requestedPhase = phase || "acquired";
+  traceOperation("Take the Lease", state, function () {
+    var replica = state.replicas[replicaIndex];
+    state.replicas.forEach(function (item) {
+      item.leaseHolder = false;
+    });
+    replica.leaseHolder = true;
+    state.lease.holderIdentity = replica.bootId;
+    state.lease.leaseDurationSeconds = "30";
+    state.lease.acquireTime = at;
+    state.lease.renewTime = at;
+    state.lease.leaseTransitions += 1;
+    state.lease.annotations[ANNOTATION.acquisitionToken] = token;
+    state.lease.annotations[ANNOTATION.acquisitionPhase] = JSON.stringify({
+      token: token,
+      state: requestedPhase === "mutating" ? "acquired" : requestedPhase
+    });
+    bumpLeaseVersion(state);
+  });
+  if (requestedPhase !== "mutating") {
+    return;
+  }
+  traceOperation("Renew the Lease before changing data", state, function () {
+    state.lease.renewTime = at;
+    bumpLeaseVersion(state);
+  });
+  traceOperation("Mark the Lease as changing data", state, function () {
+    state.lease.annotations[ANNOTATION.acquisitionPhase] = JSON.stringify({
+      token: token,
+      state: "mutating"
+    });
+    bumpLeaseVersion(state);
+  });
+}
+
+function markMutating(state, token) {
+  traceOperation("Mark the Lease as changing data", state, function () {
+    state.lease.annotations[ANNOTATION.acquisitionPhase] = JSON.stringify({
+      token: token,
+      state: "mutating"
+    });
+    bumpLeaseVersion(state);
+  });
+}
+
+function setPending(state, entries) {
+  traceOperation("Save the create token before CreateKey", state, function () {
+    state.lease.annotations[ANNOTATION.pendingCreates] =
+      Object.keys(entries).length ? JSON.stringify(entries) : "";
+    bumpLeaseVersion(state);
+  });
+}
+
+function complete(state, completionToken, prepared, resolvedPending) {
+  traceOperation("Finish and release the Lease", state, function () {
+    var owner = state.replicas.find(function (replica) {
+      return replica.leaseHolder;
+    });
+    state.replicas.forEach(function (replica) {
+      replica.leaseHolder = false;
+    });
+    state.lease.holderIdentity = "";
+    state.lease.annotations[ANNOTATION.acquisitionToken] = "";
+    state.lease.annotations[ANNOTATION.acquisitionPhase] = "";
+    state.lease.annotations[ANNOTATION.completionToken] = completionToken;
+    state.lease.annotations[ANNOTATION.preparedAuthorities] =
+      prepared && Object.keys(prepared).length ? JSON.stringify(prepared) : "";
+    if (resolvedPending) {
+      state.lease.annotations[ANNOTATION.pendingCreates] = "";
+    }
+    if (owner) {
+      owner.observedCompletion = completionToken;
+    }
+    bumpLeaseVersion(state);
+  });
+}
+
+function journalRow(journalId, type, slot, authorityId, status, issuedAt, notAfter, keyName) {
+  return {
+    journalId: journalId,
+    type: type,
+    slot: slot,
+    authorityId: authorityId,
+    status: status,
+    issuedAt: issuedAt,
+    notAfter: notAfter,
+    keyArn: KEY[keyName].arn
+  };
+}
+
+function trustRow(kind, authorityId, state, pruneWhen) {
+  return {
+    kind: kind,
+    authorityId: authorityId,
+    state: state,
+    pruneWhen: pruneWhen
+  };
+}
+
+function steadyState() {
+  var state = baseState(DEFAULT_CLUSTER, DEFAULT_LEASE);
+  state.lease.leaseDurationSeconds = "30";
+  state.lease.acquireTime = "2026-08-19T09:00:24Z";
+  state.lease.renewTime = "2026-08-19T09:00:25Z";
+  state.lease.leaseTransitions = 2;
+  state.lease.resourceVersion = "12010";
+  state.lease.annotations[ANNOTATION.completionToken] = TOKEN.completion0;
+
+  addKey(
+    state,
+    "K1",
+    "x509-CA-A",
+    createdTags(DEFAULT_CLUSTER, "x509-CA-A", "1787130001", TOKEN.bootstrap)
+  );
+  addKey(
+    state,
+    "K2",
+    "JWT-Signer-A",
+    createdTags(DEFAULT_CLUSTER, "JWT-Signer-A", "1787130026", TOKEN.bootstrapJWT)
+  );
+  setAlias(state, "x509-CA-A", "K1");
+  setAlias(state, "JWT-Signer-A", "K2");
+
+  state.journal.selectedId = "41";
+  state.journal.activeX509AuthorityId = AUTHORITY.x509A1;
+  state.journal.rows = [
+    journalRow(
+      state.journal.selectedId,
+      "X509",
+      "A",
+      AUTHORITY.x509A1,
+      "ACTIVE",
+      "2026-08-19T09:00:02Z",
+      "2026-11-17T09:00:02Z",
+      "K1"
+    ),
+    journalRow(
+      state.journal.selectedId,
+      "JWT",
+      "A",
+      AUTHORITY.jwtA1,
+      "ACTIVE",
+      "2026-08-19T09:00:27Z",
+      "2026-11-17T09:00:27Z",
+      "K2"
+    )
+  ];
+  state.trust = [
+    trustRow("X509 certificate", AUTHORITY.x509A1, "published", "After expiry and normal bundle pruning"),
+    trustRow("JWT JWK", AUTHORITY.jwtA1, "published", "After expiry or explicit revoke and normal pruning")
+  ];
+  setAllSigners(
+    state,
+    signer("x509-CA-A", "K1", AUTHORITY.x509A1),
+    signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1),
+    "Converged and issuing"
+  );
+  state.replicas.forEach(function (replica) {
+    replica.observedCompletion = TOKEN.completion0;
+  });
+  return state;
+}
+
+function preparedBState() {
+  var state = steadyState();
+  acquire(state, 1, TOKEN.prepareB, "2026-10-18T09:00:03Z", "mutating");
+  setPending(state, {"x509-CA-B": TOKEN.prepareB});
+  addKey(
+    state,
+    "K3",
+    "x509-CA-B",
+    createdTags(DEFAULT_CLUSTER, "x509-CA-B", "1792314004", TOKEN.prepareB)
+  );
+  setAlias(state, "x509-CA-B", "K3");
+  state.journal.rows.push(
+    journalRow(
+      state.journal.selectedId,
+      "X509",
+      "B",
+      AUTHORITY.x509B1,
+      "PREPARED",
+      "2026-10-18T09:00:05Z",
+      "2027-01-16T09:00:05Z",
+      "K3"
+    )
+  );
+  state.trust.push(
+    trustRow("X509 certificate", AUTHORITY.x509B1, "published", "After expiry and normal bundle pruning")
+  );
+  complete(state, TOKEN.completion1, {x509: AUTHORITY.x509B1}, true);
+  state.replicas.forEach(function (replica) {
+    replica.observedCompletion = TOKEN.completion1;
+    replica.status = "B is prepared; current signer remains A";
+  });
+  return state;
+}
+
+function rotatedBState() {
+  var state = preparedBState();
+  acquire(state, 2, TOKEN.activateB, "2026-11-10T09:00:03Z", "mutating");
+  state.journal.rows[0].status = "OLD";
+  state.journal.rows[2].status = "ACTIVE";
+  state.journal.activeX509AuthorityId = AUTHORITY.x509B1;
+  complete(state, TOKEN.completion2, {}, false);
+  setAllSigners(
+    state,
+    signer("x509-CA-B", "K3", AUTHORITY.x509B1),
+    signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1),
+    "Converged on X509 slot B"
+  );
+  state.replicas.forEach(function (replica) {
+    replica.observedCompletion = TOKEN.completion2;
+  });
+  return state;
+}
+
+function holderlessPreparedState() {
+  var state = preparedBState();
+  state.lease.holderIdentity = "";
+  state.lease.annotations[ANNOTATION.acquisitionToken] = TOKEN.prepareB;
+  state.lease.annotations[ANNOTATION.acquisitionPhase] = JSON.stringify({
+    token: TOKEN.prepareB,
+    state: "mutating"
+  });
+  state.lease.annotations[ANNOTATION.completionToken] = TOKEN.completion0;
+  state.lease.annotations[ANNOTATION.preparedAuthorities] = "";
+  state.lease.annotations[ANNOTATION.pendingCreates] = JSON.stringify({
+    "x509-CA-B": TOKEN.prepareB
+  });
+  state.replicas.forEach(function (replica) {
+    replica.leaseHolder = false;
+    replica.observedCompletion = TOKEN.completion0;
+    replica.status = "Durable state valid; Lease still shows unfinished work";
+  });
+  return state;
+}
+
+function bootstrapState() {
+  var state = baseState(DEFAULT_CLUSTER, DEFAULT_LEASE);
+  state.replicas.forEach(function (replica) {
+    replica.ready = false;
+    replica.status = "Waiting for initial authorities";
+  });
+  return state;
+}
+
+var SCENARIOS = [];
+
+function addScenario(group, title, summary, startingState, build) {
+  var state = clone(startingState);
+  var steps = [];
+  function step(stepTitle, text, outcome, tone, change, details) {
+    var beforeState = clone(state);
+    var priorOperations = activeStepOperations;
+    activeStepOperations = [];
+    if (change) {
+      change(state);
+    }
+    var operations = activeStepOperations;
+    activeStepOperations = priorOperations;
+    details = details || {};
+    steps.push({
+      title: stepTitle,
+      text: text,
+      outcome: outcome,
+      tone: tone || "",
+      source: details.source || "Custom patch",
+      actions: details.actions || null,
+      operations: operations,
+      beforeState: beforeState,
+      state: clone(state)
+    });
+  }
+  build(step);
+  SCENARIOS.push({
+    group: group,
+    title: title,
+    summary: summary,
+    steps: steps
+  });
+}
+
+addScenario(
+  "Core lifecycle",
+  "First bootstrap",
+  "Three replicas start together, but only one creates the first X.509 and JWT keys.",
+  bootstrapState(),
+  function (step) {
+    step(
+      "Start from an empty cluster",
+      "The Lease is pre-created and holderless. The SQL schema exists, but there is no CA journal, no KMS key, and no alias.",
+      "All three replicas may read state. None may write without the Lease.",
+      "",
+      null,
+      {
+        source: "Pre-existing cluster state",
+        actions: [
+          "Startup: Each server reads the Lease, the CA data in the database, and the KMS key list. They are all empty.",
+          "Startup: No server creates a key until it owns the Lease."
+        ]
+      }
+    );
+    step(
+      "Acquire the Lease for X.509 bootstrap",
+      "spire-server-0 wins the Kubernetes compare-and-update. The other replicas observe the holder and wait.",
+      "The server's boot ID and the operation token identify this X.509 rotation.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.bootstrap, "2026-08-19T09:00:00Z", "acquired");
+        state.replicas[0].status = "Lease owner; validating empty state";
+        state.replicas[1].status = "Lease held by spire-server-0; waiting";
+        state.replicas[2].status = "Lease held by spire-server-0; waiting";
+      }
+    );
+    step(
+      "Create x509-CA-A",
+      "The owner marks the Lease as changing data and saves the create token before calling CreateKey. K1 has the same token, and the shared alias points to K1's full ARN.",
+      "A crash or lost response can be tied to this one X.509 create attempt.",
+      "",
+      function (state) {
+        renewLease(state, "2026-08-19T09:00:01Z");
+        markMutating(state, TOKEN.bootstrap);
+        setPending(state, {"x509-CA-A": TOKEN.bootstrap});
+        addKey(
+          state,
+          "K1",
+          "x509-CA-A",
+          createdTags(DEFAULT_CLUSTER, "x509-CA-A", "1787130001", TOKEN.bootstrap)
+        );
+        setAlias(state, "x509-CA-A", "K1");
+        state.replicas[0].status = "Created and verified x509-CA-A";
+      }
+    );
+    step(
+      "Save and complete X.509 bootstrap",
+      "SPIRE saves the X.509 CA row before spire-server-0 starts signing with K1. It then removes the pending-create entry, writes a completion token so the other servers reload, and releases the Lease.",
+      "The first authority has no predecessor to delete.",
+      "good",
+      function (state) {
+        state.journal.selectedId = "41";
+        state.journal.activeX509AuthorityId = AUTHORITY.x509A1;
+        state.journal.rows = [
+          journalRow(
+            state.journal.selectedId,
+            "X509",
+            "A",
+            AUTHORITY.x509A1,
+            "ACTIVE",
+            "2026-08-19T09:00:02Z",
+            "2026-11-17T09:00:02Z",
+            "K1"
+          )
+        ];
+        state.trust = [
+          trustRow("X509 certificate", AUTHORITY.x509A1, "published", "After expiry and normal bundle pruning")
+        ];
+        state.replicas[0].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+        complete(state, TOKEN.completionX509, {}, true);
+        state.replicas[0].observedCompletion = TOKEN.completionX509;
+        state.replicas[0].status = "X.509 bootstrap complete";
+        state.replicas[1].status = "Waiting for the next bootstrap generation";
+        state.replicas[2].status = "Waiting for the next bootstrap generation";
+      }
+    );
+    step(
+      "Acquire a new generation for JWT bootstrap",
+      "After the completion marker has propagated, spire-server-0 acquires the Lease again with a new UUID. X.509 and JWT bootstrap are separate coordinated changes.",
+      "The Lease transition count reaches two. JWT does not reuse the X.509 create token.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.bootstrapJWT, "2026-08-19T09:00:24Z", "acquired");
+        state.replicas[0].status = "Lease owner; starting JWT bootstrap";
+      }
+    );
+    step(
+      "Create JWT-Signer-A",
+      "The owner saves a separate JWT create token, creates K2 with that token, checks its public key, and creates the shared alias.",
+      "There is one physical key for each enabled authority type.",
+      "",
+      function (state) {
+        renewLease(state, "2026-08-19T09:00:25Z");
+        markMutating(state, TOKEN.bootstrapJWT);
+        setPending(state, {"JWT-Signer-A": TOKEN.bootstrapJWT});
+        addKey(
+          state,
+          "K2",
+          "JWT-Signer-A",
+          createdTags(DEFAULT_CLUSTER, "JWT-Signer-A", "1787130026", TOKEN.bootstrapJWT)
+        );
+        setAlias(state, "JWT-Signer-A", "K2");
+        state.replicas[0].status = "Created and verified JWT-Signer-A";
+      }
+    );
+    step(
+      "Save and complete JWT bootstrap",
+      "The JWK is published and the JWT row is saved before K2 is installed. Complete clears the JWT pending-create entry and publishes the second completion UUID.",
+      "spire-server-0 now issues X.509 and JWT credentials through exact physical ARNs.",
+      "good",
+      function (state) {
+        state.journal.rows.push(
+          journalRow(
+            state.journal.selectedId,
+            "JWT",
+            "A",
+            AUTHORITY.jwtA1,
+            "ACTIVE",
+            "2026-08-19T09:00:27Z",
+            "2026-11-17T09:00:27Z",
+            "K2"
+          )
+        );
+        state.trust.push(
+          trustRow("JWT JWK", AUTHORITY.jwtA1, "published", "After expiry or explicit revoke and normal pruning")
+        );
+        state.replicas[0].jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+        complete(state, TOKEN.completion0, {}, true);
+        state.replicas[0].ready = true;
+        state.replicas[0].observedCompletion = TOKEN.completion0;
+        state.replicas[0].status = "X.509 and JWT bootstrap complete";
+        state.replicas[1].status = "Waiting to reload the final completion";
+        state.replicas[2].status = "Waiting to reload the final completion";
+      }
+    );
+    step(
+      "Followers adopt the same state",
+      "spire-server-1 and spire-server-2 observe the new completion UUID, resolve the same aliases, find the same journal, validate public keys, and install exact-ARN signers.",
+      "Three replicas issue with two physical keys. Joining replicas create nothing.",
+      "good",
+      function (state) {
+        setAllSigners(
+          state,
+          signer("x509-CA-A", "K1", AUTHORITY.x509A1),
+          signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1),
+          "Converged and issuing"
+        );
+        state.replicas.forEach(function (replica) {
+          replica.ready = true;
+          replica.observedCompletion = TOKEN.completion0;
+        });
+      }
+    );
+  }
+);
+
+addScenario(
+  "Core lifecycle",
+  "Scheduled rotation and predecessor deletion",
+  "Prepare a new slot, publish it, activate it, and later replace an old physical key with a seven-day deletion window.",
+  steadyState(),
+  function (step) {
+    step(
+      "The prepare threshold is reached",
+      "spire-server-1 acquires the Lease for X.509 slot B after reloading the current journal.",
+      "Slot A remains active while B is prepared.",
+      "",
+      function (state) {
+        acquire(state, 1, TOKEN.prepareB, "2026-10-18T09:00:03Z", "mutating");
+        state.replicas[1].status = "Lease owner; preparing x509-CA-B";
+      }
+    );
+    step(
+      "Create and bind x509-CA-B",
+      "The owner writes pending-create, creates K3 with the exact token, verifies the public key, and creates the B alias.",
+      "K3 is a new physical generation. It has no predecessor because the B alias did not exist.",
+      "",
+      function (state) {
+        setPending(state, {"x509-CA-B": TOKEN.prepareB});
+        addKey(
+          state,
+          "K3",
+          "x509-CA-B",
+          createdTags(DEFAULT_CLUSTER, "x509-CA-B", "1792314004", TOKEN.prepareB)
+        );
+        setAlias(state, "x509-CA-B", "K3");
+      }
+    );
+    step(
+      "Publish B before it signs",
+      "The journal saves B as PREPARED and adds its certificate to the bundle. SPIRE checks K3, removes the pending-create entry, and records that B is ready for the 20-second wait.",
+      "Relying parties can receive B before any server uses it to sign.",
+      "good",
+      function (state) {
+        state.journal.rows.push(
+          journalRow(
+            state.journal.selectedId,
+            "X509",
+            "B",
+            AUTHORITY.x509B1,
+            "PREPARED",
+            "2026-10-18T09:00:05Z",
+            "2027-01-16T09:00:05Z",
+            "K3"
+          )
+        );
+        state.trust.push(
+          trustRow("X509 certificate", AUTHORITY.x509B1, "published", "After expiry and normal bundle pruning")
+        );
+        complete(state, TOKEN.completion1, {x509: AUTHORITY.x509B1}, true);
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion1;
+          replica.status = "B prepared; observing propagation window";
+        });
+      }
+    );
+    step(
+      "Wait for the propagation window",
+      "Each process must observe the same prepared marker for 20 seconds on its own clock. An early activation is rejected.",
+      "The active signer is still x509-CA-A on every replica.",
+      "warn"
+    );
+    step(
+      "Save B as active before using it",
+      "spire-server-2 acquires the Lease, rechecks the window, marks B ACTIVE, marks A OLD, updates activeX509AuthorityId, and then installs the B signer.",
+      "All followers reload and use the exact K3 ARN. K1 is still Enabled because slot A has not been reused.",
+      "good",
+      function (state) {
+        acquire(state, 2, TOKEN.activateB, "2026-11-10T09:00:03Z", "mutating");
+        state.journal.rows[0].status = "OLD";
+        state.journal.rows[2].status = "ACTIVE";
+        state.journal.activeX509AuthorityId = AUTHORITY.x509B1;
+        complete(state, TOKEN.completion2, {}, false);
+        setAllSigners(
+          state,
+          signer("x509-CA-B", "K3", AUTHORITY.x509B1),
+          signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1),
+          "Converged on X509 slot B"
+        );
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion2;
+        });
+      }
+    );
+    step(
+      "A forced cycle reuses slot A",
+      "An operator starts another preparation after B is active. K4 is created for x509-CA-A. Before moving the alias, K4 records the full K1 ARN as spire-retire-source and K1 records the K4 create UUID as spire-retire-token.",
+      "The two keys now contain matching, attempt-bound retirement evidence.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.replaceA, "2026-11-10T10:00:00Z", "mutating");
+        setPending(state, {"x509-CA-A": TOKEN.replaceA});
+        var replacementTags = createdTags(
+          DEFAULT_CLUSTER,
+          "x509-CA-A",
+          "1794304801",
+          TOKEN.replaceA
+        );
+        replacementTags["spire-retire-source"] = KEY.K1.arn;
+        addKey(state, "K4", "x509-CA-A", replacementTags);
+        findKey(state, "K1").tags["spire-retire-token"] = TOKEN.replaceA;
+        setAlias(state, "x509-CA-A", "K4");
+        state.journal.rows.push(journalRow(
+          state.journal.selectedId,
+          "X509",
+          "A",
+          AUTHORITY.x509A2,
+          "PREPARED",
+          "2026-11-10T10:00:03Z",
+          "2027-02-08T10:00:03Z",
+          "K4"
+        ));
+        state.trust.push(
+          trustRow("X509 certificate", AUTHORITY.x509A2, "published", "After expiry and normal bundle pruning")
+        );
+      }
+    );
+    step(
+      "Finalize the replacement",
+      "SPIRE reloads the saved state and confirms that K4 matches the PREPARED journal row and no alias points to K1. It then schedules K1 for deletion in seven days.",
+      "K1 enters PendingDeletion and cannot sign. Complete clears the pending-create entry only after this proof.",
+      "warn",
+      function (state) {
+        var oldKey = findKey(state, "K1");
+        oldKey.state = "PendingDeletion";
+        oldKey.deletionDate = "2026-11-17T10:00:06Z";
+        oldKey.note = "Exact predecessor; scheduled after journal and reload proof";
+        state.counters.scheduleDeletion += 1;
+        complete(state, TOKEN.completion3, {x509: AUTHORITY.x509A2}, true);
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion3;
+          replica.status = "A2 prepared; old K1 route now fails at KMS";
+        });
+      }
+    );
+    step(
+      "Public trust outlives the private key",
+      "After A2's 20-second propagation window, spire-server-1 acquires the Lease and handles the forced activation. K1 cannot sign and will be deleted on 2026-11-17 unless an operator with a separate recovery role cancels deletion.",
+      "A1 is normally eligible for bundle pruning 24 hours after NotAfter, then leaves on the next successful six-hour pass; coordinated revoke can remove it sooner. Private signing and public verification have different lifetimes.",
+      "good",
+      function (state) {
+        acquire(state, 1, TOKEN.activateA2, "2026-11-10T10:00:30Z", "mutating");
+        state.journal.rows[3].status = "ACTIVE";
+        state.journal.rows[2].status = "OLD";
+        state.journal.activeX509AuthorityId = AUTHORITY.x509A2;
+        complete(state, TOKEN.completion5, {}, false);
+        setAllSigners(
+          state,
+          signer("x509-CA-A", "K4", AUTHORITY.x509A2),
+          signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1),
+          "Converged on fresh X509 slot A"
+        );
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion5;
+        });
+      }
+    );
+  }
+);
+
+addScenario(
+  "Core lifecycle",
+  "Concurrent prepare requests",
+  "Two servers request the same preparation, but the Lease and a reload produce only one result.",
+  steadyState(),
+  function (step) {
+    step(
+      "Two callers request slot B",
+      "An administrator calls prepare on spire-server-0 while the scheduler on spire-server-2 reaches the same threshold.",
+      "Both callers enter cluster coordination.",
+      "",
+      null,
+      {
+        actions: [
+          "Request handling: Handles the two requests one at a time. Both requests use the same Lease.",
+          "Request handling: Neither request has changed the Lease, KMS, or database yet."
+        ]
+      }
+    );
+    step(
+      "spire-server-2 wins the Lease",
+      "spire-server-0 observes the current holder and waits. spire-server-2 records one pending-create entry before any KMS create call.",
+      "Contention does not change KMS or the journal.",
+      "",
+      function (state) {
+        acquire(state, 2, TOKEN.prepareB, "2026-10-18T09:00:03Z", "mutating");
+        setPending(state, {"x509-CA-B": TOKEN.prepareB});
+        state.replicas[0].status = "Waiting for current Lease owner";
+        state.replicas[2].status = "Preparing x509-CA-B";
+      }
+    );
+    step(
+      "The winner commits B",
+      "K3 is created, the B alias is verified, the journal records B as PREPARED, and Complete publishes one marker.",
+      "The cluster has one new key and one new completion UUID.",
+      "good",
+      function (state) {
+        addKey(
+          state,
+          "K3",
+          "x509-CA-B",
+          createdTags(DEFAULT_CLUSTER, "x509-CA-B", "1792314004", TOKEN.prepareB)
+        );
+        setAlias(state, "x509-CA-B", "K3");
+        state.journal.rows.push(
+          journalRow(
+            state.journal.selectedId,
+            "X509",
+            "B",
+            AUTHORITY.x509B1,
+            "PREPARED",
+            "2026-10-18T09:00:05Z",
+            "2027-01-16T09:00:05Z",
+            "K3"
+          )
+        );
+        state.trust.push(
+          trustRow("X509 certificate", AUTHORITY.x509B1, "published", "After expiry and normal bundle pruning")
+        );
+        complete(state, TOKEN.completion1, {x509: AUTHORITY.x509B1}, true);
+      }
+    );
+    step(
+      "The waiting caller reloads",
+      "spire-server-0 sees the new completion token and reloads. It finds that B is already PREPARED with the requested key.",
+      "It returns the existing result without another Lease completion, alias update, or CreateKey call.",
+      "good",
+      function (state) {
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion1;
+          replica.status = "B already prepared; no additional mutation";
+        });
+      },
+      {
+        actions: [
+          "Waiting server: Sees the completion token written by the winning server and reloads the Lease, KMS keys, and CA journal.",
+          "Waiting server: Finds that slot B already uses K3 and is marked PREPARED. This means the key is published but is not signing yet.",
+          "Waiting server: Returns that result without creating a key or changing the Lease, alias, or journal."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Core lifecycle",
+  "Exact ARN signing while an alias moves",
+  "An installed signer never follows a mutable alias to a different physical key.",
+  rotatedBState(),
+  function (step) {
+    step(
+      "A lagging process still holds the old A signer",
+      "The cluster has activated B, but spire-server-1 has not yet consumed that completion. Its existing route names the full K1 ARN, not the x509-CA-A alias.",
+      "K1 is still Enabled, so the old exact route can sign during this bounded pre-finalization interval.",
+      "warn",
+      function (state) {
+        state.replicas[1].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+        state.replicas[1].observedCompletion = TOKEN.completion1;
+        state.replicas[1].status = "Stale completion view; exact route still names K1";
+      },
+      {
+        source: "Delayed follower state",
+        actions: [
+          "Signing: spire-server-1 keeps signing with the full K1 ARN that it loaded earlier.",
+          "Signing: It does not read the x509-CA-A alias for each signature, so moving the alias cannot switch its key."
+        ]
+      }
+    );
+    step(
+      "Another owner moves the A alias to K4",
+      "K4 has its create token and names K1 as the old key. K1 has the matching replacement token. The shared A alias now points to K4.",
+      "A Sign request from the stale process still names K1. It never signs with K4 by accident.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.replaceA, "2026-11-11T10:00:00Z", "mutating");
+        setPending(state, {"x509-CA-A": TOKEN.replaceA});
+        var replacementTags = createdTags(
+          DEFAULT_CLUSTER,
+          "x509-CA-A",
+          "1794391201",
+          TOKEN.replaceA
+        );
+        replacementTags["spire-retire-source"] = KEY.K1.arn;
+        addKey(state, "K4", "x509-CA-A", replacementTags);
+        findKey(state, "K1").tags["spire-retire-token"] = TOKEN.replaceA;
+        setAlias(state, "x509-CA-A", "K4");
+        state.journal.rows.push(journalRow(
+          state.journal.selectedId,
+          "X509",
+          "A",
+          AUTHORITY.x509A2,
+          "PREPARED",
+          "2026-11-11T10:00:03Z",
+          "2027-02-09T10:00:03Z",
+          "K4"
+        ));
+        state.trust.push(
+          trustRow("X509 certificate", AUTHORITY.x509A2, "published", "After expiry and normal bundle pruning")
+        );
+        state.replicas[1].status = "Exact route calls K1 while alias points to K4";
+      }
+    );
+    step(
+      "Finalization schedules K1 for deletion",
+      "Journal and reload proof show K4 is the intended replacement and no alias targets K1. KMS accepts ScheduleKeyDeletion with a seven-day window.",
+      "K1 immediately enters PendingDeletion. Calls that still name K1 fail; they do not follow the alias to K4.",
+      "warn",
+      function (state) {
+        var oldKey = findKey(state, "K1");
+        oldKey.state = "PendingDeletion";
+        oldKey.deletionDate = "2026-11-18T10:00:06Z";
+        oldKey.note = "Old exact route is no longer usable";
+        state.counters.scheduleDeletion += 1;
+        complete(state, TOKEN.completion3, {x509: AUTHORITY.x509A2}, true);
+        state.replicas[1].ready = false;
+        state.replicas[1].status = "Old route rejected because K1 is PendingDeletion";
+      }
+    );
+    step(
+      "The lagging process reloads",
+      "The process reads the current journal and aliases before becoming ready. It installs the current B signer and later installs A2 only after A2 becomes active.",
+      "Exact routing prevents wrong-key signatures; readiness prevents a stale process from silently continuing.",
+      "good",
+      function (state) {
+        state.replicas[1].ready = true;
+        state.replicas[1].x509 = signer("x509-CA-B", "K3", AUTHORITY.x509B1);
+        state.replicas[1].observedCompletion = TOKEN.completion3;
+        state.replicas[1].status = "Reloaded current state";
+      }
+    );
+  }
+);
+
+addScenario(
+  "Recovery",
+  "Crash during activation",
+  "A new owner finishes an activation that was saved before the first owner crashed.",
+  preparedBState(),
+  function (step) {
+    step(
+      "spire-server-0 begins activation",
+      "The B marker has passed its propagation window. spire-server-0 acquires the Lease and writes the journal before installing the signer.",
+      "The acquisition phase is marked mutating before journal writes begin.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.activateB, "2026-11-10T09:00:03Z", "mutating");
+        state.replicas[0].status = "Activating X509 slot B";
+      }
+    );
+    step(
+      "The activation transaction commits",
+      "One journal save marks B ACTIVE, marks A OLD, and changes activeX509AuthorityId to B. The owner has not installed the B signer or completed the Lease yet.",
+      "Durable state is internally consistent, while this process still has its old local signer.",
+      "warn",
+      function (state) {
+        state.journal.rows[2].status = "ACTIVE";
+        state.journal.rows[0].status = "OLD";
+        state.journal.activeX509AuthorityId = AUTHORITY.x509B1;
+      }
+    );
+    step(
+      "The owner crashes",
+      "The process stops before local signer installation and before Complete. The holder, acquisition token, mutating phase, and last renew time remain in the Lease.",
+      "No successor may take over until it observes the unchanged Lease for the full 30-second TTL.",
+      "bad",
+      function (state) {
+        state.replicas[0].ready = false;
+        state.replicas[0].leaseHolder = false;
+        state.replicas[0].status = "Process stopped";
+        state.replicas[1].ready = false;
+        state.replicas[2].ready = false;
+        state.replicas[1].status = "Completion missing; existing signer kept";
+        state.replicas[2].status = "Observing stale Lease record";
+      },
+      {
+        source: "Process failure",
+        actions: [
+          "Crash: spire-server-0 stops. The Lease still names it as the owner and says that its operation was in progress.",
+          "Crash: The operation token and last renewal time also remain in the Lease.",
+          "Crash: The journal change remains in the database. Other servers keep their current signers and wait 30 seconds before trying to take over."
+        ]
+      }
+    );
+    step(
+      "spire-server-1 takes over",
+      "After local TTL observation, spire-server-1 replaces the holder and records a recovering acquisition phase.",
+      "Recovery runs instead of the original scheduled operation.",
+      "warn",
+      function (state) {
+        acquire(state, 1, TOKEN.recovery, "2026-11-10T09:00:36Z", "recovering");
+        state.replicas[1].status = "Lease owner; reloading committed activation";
+      }
+    );
+    step(
+      "Reload and publish the missing completion",
+      "Recovery accepts the atomic A-OLD, B-ACTIVE journal state, installs B from its exact ARN, and completes without changing the journal or creating a key.",
+      "The new completion UUID tells all replicas to reload the committed activation.",
+      "good",
+      function (state) {
+        complete(state, TOKEN.completion2, {}, false);
+        state.replicas[1].ready = true;
+        state.replicas[2].ready = true;
+        state.replicas[1].x509 = signer("x509-CA-B", "K3", AUTHORITY.x509B1);
+        state.replicas[2].x509 = signer("x509-CA-B", "K3", AUTHORITY.x509B1);
+        state.replicas[1].status = "Recovered and issuing with B";
+        state.replicas[2].status = "Reloaded repaired state";
+        state.replicas[1].observedCompletion = TOKEN.completion2;
+        state.replicas[2].observedCompletion = TOKEN.completion2;
+      }
+    );
+    step(
+      "The crashed pod restarts",
+      "The restarted process has a new boot UUID. It cannot be mistaken for the former Lease owner and must reload before readiness.",
+      "All three replicas converge on B. Recovery created no KMS key.",
+      "good",
+      function (state) {
+        state.replicas[0].bootId = BOOT_ID.server0Restarted;
+        state.replicas[0].ready = true;
+        state.replicas[0].x509 = signer("x509-CA-B", "K3", AUTHORITY.x509B1);
+        state.replicas[0].jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+        state.replicas[0].observedCompletion = TOKEN.completion2;
+        state.replicas[0].status = "Restarted and converged";
+      }
+    );
+  }
+);
+
+addScenario(
+  "Recovery",
+  "CreateKey succeeds but its response is lost",
+  "Durable pending-create evidence keeps retries from creating duplicate physical keys.",
+  steadyState(),
+  function (step) {
+    step(
+      "Prepare JWT slot B",
+      "spire-server-2 acquires the Lease and records JWT-Signer-B with the exact acquisition UUID before CreateKey.",
+      "The create token is saved before the AWS call.",
+      "",
+      function (state) {
+        acquire(state, 2, TOKEN.aliasRetry, "2026-10-01T11:00:00Z", "mutating");
+        setPending(state, {"JWT-Signer-B": TOKEN.aliasRetry});
+        state.replicas[2].status = "Calling CreateKey for JWT-Signer-B";
+      }
+    );
+    step(
+      "KMS commits K9, then the response is lost",
+      "K9 exists with the full create token, but there is no alias yet. The tag-discovery index has not exposed the new key.",
+      "The result is ambiguous. The owner does not call CreateKey again.",
+      "bad",
+      function (state) {
+        addKey(
+          state,
+          "K9",
+          "JWT-Signer-B",
+          createdTags(DEFAULT_CLUSTER, "JWT-Signer-B", "1790852401", TOKEN.aliasRetry),
+          "Created remotely; not yet returned by tag discovery"
+        );
+        state.replicas[2].status = "CreateKey response lost";
+      },
+      {
+        source: "AWS KMS and custom patch",
+        actions: [
+          "AWS KMS: Creates K9 and tags it with the operation token, but the response is lost before the plugin can check the key or create its alias.",
+          "AWS KMS key plugin: Cannot tell whether CreateKey worked. It keeps the operation token and unfinished key-creation entry in the Lease.",
+          "AWS KMS key plugin: Does not create a second key."
+        ]
+      }
+    );
+    step(
+      "Release the holder but preserve evidence",
+      "The owner clears holderIdentity so another replica can recover, but leaves acquisition token, mutating phase, and pending-create data.",
+      "The Lease shows that KMS or the journal may have changed.",
+      "warn",
+      function (state) {
+        state.replicas[2].leaseHolder = false;
+        state.lease.holderIdentity = "";
+        bumpLeaseVersion(state);
+      }
+    );
+    step(
+      "Recovery does not clear the unresolved create",
+      "A recovery owner repairs ownership bookkeeping and publishes a completion UUID. The pending JWT-Signer-B token remains because K9 has not yet been identified.",
+      "Later ensure calls must not call CreateKey for this logical key.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.recovery, "2026-10-01T11:00:34Z", "recovering");
+        state.replicas[0].status = "Repairing ownership bookkeeping";
+        complete(state, TOKEN.completion3, {}, false);
+      }
+    );
+    step(
+      "A retry sees no tag result",
+      "The KMS tag search still finds no key. Because the saved create token exists, the retry stops instead of creating another key.",
+      "The physical key count remains three.",
+      "bad",
+      function (state) {
+        state.replicas[0].status = "Create forbidden until discovery identifies the prior attempt";
+      },
+      {
+        actions: [
+          "AWS KMS key plugin: Searches for a key tagged with the saved operation token, but K9 is not visible yet.",
+          "Recovery: Keeps the Lease entry that says this key-creation attempt is unfinished.",
+          "Recovery: Returns an error and does not create another key."
+        ]
+      }
+    );
+    step(
+      "Discovery finds K9 and the cluster adopts it",
+      "The exact create token matches the Lease. The owner creates the JWT-Signer-B alias, writes the PREPARED journal row, verifies reload, and clears pending-create in Complete.",
+      "Any number of retries produces one physical key for this attempt.",
+      "good",
+      function (state) {
+        acquire(state, 0, TOKEN.adoptCreate, "2026-10-01T11:03:00Z", "mutating");
+        findKey(state, "K9").note = "";
+        setAlias(state, "JWT-Signer-B", "K9");
+        state.journal.rows.push(
+          journalRow(
+            state.journal.selectedId,
+            "JWT",
+            "B",
+            AUTHORITY.jwtB1,
+            "PREPARED",
+            "2026-10-01T11:03:00Z",
+            "2026-12-30T11:03:00Z",
+            "K9"
+          )
+        );
+        state.trust.push(
+          trustRow("JWT JWK", AUTHORITY.jwtB1, "published", "After expiry or explicit revoke and normal pruning")
+        );
+        complete(state, TOKEN.completion4, {jwt: AUTHORITY.jwtB1}, true);
+        state.replicas[0].status = "Adopted K9 and completed JWT preparation";
+      },
+      {
+        actions: [
+          "AWS KMS key plugin: Finds K9 because its spire-create-token matches the saved operation token. It checks K9's full ARN, public key, state, and tags.",
+          "AWS KMS key plugin: Reuses K9 instead of creating another key.",
+          "SPIRE: Points the JWT-Signer-B alias to K9 and saves K9 in the JWT journal as PREPARED.",
+          "SPIRE: PREPARED means the JWK is published, but K9 is not signing yet.",
+          "SPIRE: Reloads the saved data to check it, removes pending-create, and writes a completion token."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Recovery",
+  "Alias update returns an unknown result",
+  "Readback distinguishes an alias move that did not commit from a move that did commit.",
+  rotatedBState(),
+  function (step) {
+    step(
+      "Create a replacement for slot A",
+      "K5 is bound to one pending-create token. It names K1 as its retirement source, and K1 carries the matching retirement token.",
+      "Both retirement tags are saved before the alias moves.",
+      "",
+      function (state) {
+        acquire(state, 1, TOKEN.aliasRetry, "2026-11-12T08:00:00Z", "mutating");
+        setPending(state, {"x509-CA-A": TOKEN.aliasRetry});
+        var tags = createdTags(DEFAULT_CLUSTER, "x509-CA-A", "1794470401", TOKEN.aliasRetry);
+        tags["spire-retire-source"] = KEY.K1.arn;
+        addKey(state, "K5", "x509-CA-A", tags, "Waiting for shared alias");
+        findKey(state, "K1").tags["spire-retire-token"] = TOKEN.aliasRetry;
+      }
+    );
+    step(
+      "The first UpdateAlias call times out",
+      "Bounded readback does not observe the intended K5 target. SPIRE cannot know whether the remote update may still arrive, so it keeps K5 and the pending token and stops.",
+      "No journal row is written and no additional replacement key is created.",
+      "warn",
+      function (state) {
+        state.replicas[1].status = "Alias still targets K1; preserving K5 for retry";
+        state.replicas[1].leaseHolder = false;
+        state.lease.holderIdentity = "";
+        bumpLeaseVersion(state);
+      },
+      {
+        actions: [
+          "AWS KMS key plugin: Reads the alias after UpdateAlias times out. It still points to K1, so the plugin stops.",
+          "AWS KMS key plugin: Does not write the journal, delete K5, or create another key.",
+          "Cluster lock: Clears the Lease owner field (holderIdentity), so another server can take the lock.",
+          "Cluster lock: Keeps the operation token and unfinished K5 entry, so the next server continues with K5."
+        ]
+      }
+    );
+    step(
+      "A later owner retries the same candidate",
+      "The pending token selects K5. A second alias call also loses its response, but readback now shows the full K5 ARN.",
+      "The move is treated as committed because the exact intended target is visible.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.recovery, "2026-11-12T08:00:34Z", "recovering");
+        setAlias(state, "x509-CA-A", "K5");
+        findKey(state, "K5").note = "";
+        state.replicas[0].status = "Alias read confirms that K5 is the target";
+      }
+    );
+    step(
+      "Write the journal and finalize",
+      "The A slot records A2 as PREPARED. Authoritative reload matches K5. Finalization proves K1 is unaliased and schedules it for deletion.",
+      "The retry adopts K5; it never stacks another orphan.",
+      "good",
+      function (state) {
+        state.journal.rows.push(journalRow(
+          state.journal.selectedId,
+          "X509",
+          "A",
+          AUTHORITY.x509A2,
+          "PREPARED",
+          "2026-11-12T08:00:36Z",
+          "2027-02-10T08:00:36Z",
+          "K5"
+        ));
+        state.trust.push(
+          trustRow("X509 certificate", AUTHORITY.x509A2, "published", "After expiry and normal bundle pruning")
+        );
+        var oldKey = findKey(state, "K1");
+        oldKey.state = "PendingDeletion";
+        oldKey.deletionDate = "2026-11-19T08:00:40Z";
+        oldKey.note = "Deletion scheduled after exact readback and reload proof";
+        state.counters.scheduleDeletion += 1;
+        complete(state, TOKEN.completion4, {x509: AUTHORITY.x509A2}, true);
+      }
+    );
+    step(
+      "Ambiguous candidates require an operator",
+      "If discovery returns two unjournaled keys that cannot be tied to one pending UUID, the plugin lists both full ARNs and stops.",
+      "It does not guess, move an alias, delete a candidate, or call CreateKey.",
+      "bad",
+      null,
+      {
+        actions: [
+          "AWS KMS key plugin: Finds more than one possible key and cannot prove which one belongs to this operation.",
+          "AWS KMS key plugin: Reports every full key ARN and stops. It does not create or delete a key, move an alias, or write the journal."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Recovery",
+  "External alias drift",
+  "Existing exact routes keep their identity, while restart validation refuses a mismatched alias.",
+  steadyState(),
+  function (step) {
+    step(
+      "An external actor moves x509-CA-A",
+      "Someone outside SPIRE changes the shared alias from K1 to K7. K7 has similar tags but a different public key and no matching journal row.",
+      "The saved journal still connects the active certificate to K1.",
+      "bad",
+      function (state) {
+        var tags = createdTags(
+          DEFAULT_CLUSTER,
+          "x509-CA-A",
+          "1794579000",
+          "ab2995c4-2a8c-40b1-a70a-e40ff6689725"
+        );
+        addExistingKey(state, "K7", "x509-CA-A", tags, "External drift target");
+        setAlias(state, "x509-CA-A", "K7");
+      },
+      {
+        source: "External AWS actor",
+        actions: [
+          "Outside SPIRE: Creates K7 and changes the x509-CA-A alias from the K1 ARN to the K7 ARN.",
+          "Outside SPIRE: The custom patch makes no change in this step."
+        ]
+      }
+    );
+    step(
+      "Running signers still use K1",
+      "All installed routes carry the full K1 ARN. No request follows the changed alias.",
+      "Existing signatures remain bound to the certificate that installed the route.",
+      "good",
+      function (state) {
+        state.replicas.forEach(function (replica) {
+          replica.status = "Signing with exact K1 ARN; alias is not consulted";
+        });
+      },
+      {
+        actions: [
+          "Signing: Each running server sends Sign directly to the full K1 ARN.",
+          "Signing: It does not read the alias, so the alias change does not change the key being used."
+        ]
+      }
+    );
+    step(
+      "A restarted replica finds the original journal",
+      "Journal discovery uses the complete tagged key inventory as well as aliases. K1 still leads to the existing journal, so the replica does not treat this as an empty cluster.",
+      "No second journal and no new KMS key are created.",
+      "",
+      function (state) {
+        state.replicas[2].bootId = "spire-server-2_e07bcaa1-8f60-4d3f-a2a4-027903227b81";
+        state.replicas[2].x509 = null;
+        state.replicas[2].jwt = null;
+        state.replicas[2].ready = false;
+        state.replicas[2].status = "Journal found through K1 inventory";
+      }
+    );
+    step(
+      "Validation rejects the drifted target",
+      "The alias public key does not match the journal fingerprint. The restarted process rejects the whole reload and installs neither signer.",
+      "That process stays unready and creates no key. Other running replicas keep their existing exact routes.",
+      "bad",
+      function (state) {
+        state.replicas[2].status = "Reload rejected: X509 alias and journal mismatch";
+      },
+      {
+        actions: [
+          "AWS KMS key plugin: Follows the x509-CA-A alias to K7 and reads K7's public key.",
+          "AWS KMS key plugin: Finds that K7's public key does not match the X.509 certificate saved for K1.",
+          "SPIRE server memory: Rejects the reload, loads no signer, and stays unready. It does not change KMS, the Lease, or the database."
+        ]
+      }
+    );
+    step(
+      "Restore the exact alias target",
+      "An operator moves x509-CA-A back to K1. The next reload verifies K1 and installs the original signer.",
+      "The cluster recovers without key creation or tag changes to K7.",
+      "good",
+      function (state) {
+        setAlias(state, "x509-CA-A", "K1");
+        state.replicas[2].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+        state.replicas[2].jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+        state.replicas[2].ready = true;
+        state.replicas[2].status = "Alias restored; converged";
+      },
+      {
+        source: "Operator and custom patch",
+        actions: [
+          "Operator: Changes the x509-CA-A alias back to the full K1 ARN.",
+          "AWS KMS key plugin: Reads K1 and K2 and checks that their ARNs and public keys match the CA journal.",
+          "SPIRE server memory: Loads K1 for X.509 signing and K2 for JWT signing, then becomes ready."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Recovery",
+  "Taint and revoke with a lost datastore response",
+  "A Lease tombstone prevents removed public trust from returning after restart.",
+  steadyState(),
+  function (step) {
+    step(
+      "An old JWT authority is still published",
+      "JWT slot B is OLD and its JWK remains in the bundle so existing tokens can still verify.",
+      "The authority is eligible for taint or revoke because it is not current or prepared.",
+      "",
+      function (state) {
+        addExistingKey(
+          state,
+          "K6",
+          "JWT-Signer-B",
+          createdTags(
+            DEFAULT_CLUSTER,
+            "JWT-Signer-B",
+            "1784000000",
+            "6b020d91-32d4-43a6-8bdd-34b0fa903e37"
+          ),
+          "Historical physical key"
+        );
+        setAlias(state, "JWT-Signer-B", "K6");
+        state.journal.rows.push(
+          journalRow(
+            state.journal.selectedId,
+            "JWT",
+            "B",
+            AUTHORITY.jwtOld,
+            "OLD",
+            "2026-06-01T00:00:00Z",
+            "2026-08-30T00:00:00Z",
+            "K6"
+          )
+        );
+        state.trust.push(
+          trustRow("JWT JWK", AUTHORITY.jwtOld, "published", "After expiry or explicit revoke and normal pruning")
+        );
+      },
+      {
+        source: "Pre-existing historical state",
+        actions: [
+          "Starting state: K6, its alias, its OLD journal row, and its JWK already exist.",
+          "Starting state: This step only adds them to the diagram. The custom patch did not create them."
+        ]
+      }
+    );
+    step(
+      "Record deny evidence before changing the bundle",
+      "spire-server-0 acquires the Lease and appends the old authority ID plus its public-key hash to rotation-taint-tombstones.",
+      "The block record is saved in the Lease before the database change.",
+      "",
+      function (state) {
+        acquire(state, 0, TOKEN.aliasRetry, "2026-08-20T12:00:00Z", "mutating");
+        state.lease.annotations[ANNOTATION.taintTombstones] = JSON.stringify({
+          v: 1,
+          e: [{
+            k: "jwt",
+            i: AUTHORITY.jwtOld,
+            p: KEY.K6.fingerprint
+          }]
+        });
+        bumpLeaseVersion(state);
+        state.replicas[0].status = "Tombstone recorded; tainting old JWT authority";
+      }
+    );
+    step(
+      "The datastore commits, but the response is lost",
+      "A detached, bounded reload reads the bundle and sees the exact old authority marked tainted.",
+      "The reload confirms that the datastore write succeeded.",
+      "warn",
+      function (state) {
+        var oldTrust = state.trust.find(function (item) {
+          return item.authorityId === AUTHORITY.jwtOld;
+        });
+        oldTrust.state = "tainted";
+      },
+      {
+        source: "Datastore and custom patch",
+        actions: [
+          "Database: Marks the old JWT authority as tainted, so SPIRE will not treat it as valid signing state. The success response is lost.",
+          "Recovery: Reloads the bundle with a separate request that has a time limit.",
+          "Recovery: Sees that the old JWT authority is marked tainted and treats the original database write as successful."
+        ]
+      }
+    );
+    step(
+      "Complete without reporting a false failure",
+      "The coordinator publishes a completion UUID and releases the Lease. The tombstone remains after completion.",
+      "A restart cannot reintroduce the tainted JWK from a stale bundle read.",
+      "good",
+      function (state) {
+        complete(state, TOKEN.completion3, {}, false);
+        state.replicas[0].status = "Reload confirms that the taint was saved";
+      }
+    );
+    step(
+      "Revoke removes public trust",
+      "After the prior completion propagates, spire-server-1 acquires a new Lease generation. The coordinated revoke removes the old authority from SPIRE's bundle, publishes another completion UUID, and keeps the tombstone.",
+      "OIDC removes the JWK after its next successful source poll; Workload API mode may first wait for Agent propagation. Physical KMS key cleanup is separate.",
+      "good",
+      function (state) {
+        acquire(state, 1, TOKEN.revokeJWT, "2026-08-20T12:00:25Z", "mutating");
+        var oldTrust = state.trust.find(function (item) {
+          return item.authorityId === AUTHORITY.jwtOld;
+        });
+        oldTrust.state = "revoked";
+        oldTrust.pruneWhen = "Removed from SPIRE bundle; OIDC follows its next successful source poll";
+        complete(state, TOKEN.completion4, {}, false);
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion4;
+          replica.status = "Old JWT trust removed; current signer unchanged";
+        });
+      }
+    );
+  }
+);
+
+addScenario(
+  "Recovery",
+  "Holderless recovery evidence",
+  "A valid PREPARED journal can still require bookkeeping recovery when an ambiguous writer releases its holder.",
+  holderlessPreparedState(),
+  function (step) {
+    step(
+      "Finalization cannot prove the prepared state",
+      "The B journal row and bundle certificate were saved, but the final reload fails. The writer releases holderIdentity but keeps the operation token, phase, and pending-create entry because some writes may have succeeded.",
+      "The Lease is holderless, but it still proves unfinished ownership bookkeeping.",
+      "warn",
+      null,
+      {
+        source: "Prior failed finalization",
+        actions: [
+          "Starting state: An earlier failed owner already cleared holderIdentity.",
+          "Starting state: The Lease says the operation was changing data (phase=mutating).",
+          "Starting state: Its operation token and unfinished key-creation entry also remain. This step only shows those values."
+        ]
+      }
+    );
+    step(
+      "An idle pass notices the token",
+      "No rotation is due, but the holderless acquisition token is enough to start recovery.",
+      "Valid journal state does not hide incomplete Lease bookkeeping.",
+      "",
+      null,
+      {
+        actions: [
+          "Scheduled check: Sees an empty holderIdentity together with an unfinished operation token and pending-create value.",
+          "Scheduled check: Starts recovery even though no key is due for normal rotation."
+        ]
+      }
+    );
+    step(
+      "A new owner reloads before acting",
+      "spire-server-1 takes the Lease in recovery mode and confirms that B is already PREPARED with K3.",
+      "Recovery performs no KMS create, alias move, or journal mutation.",
+      "",
+      function (state) {
+        acquire(state, 1, TOKEN.recovery, "2026-10-18T09:00:40Z", "recovering");
+        state.replicas[1].status = "Recovering valid prepared state";
+      },
+      {
+        actions: [
+          "Recovery owner: Takes the Lease and marks the operation as recovery work (phase=recovering).",
+          "Recovery owner: Reloads the database and KMS before changing anything else.",
+          "Recovery owner: Confirms that the B row is PREPARED, the alias points to K3, and K3's public key matches the journal.",
+          "Recovery owner: Does not create a key or change the alias or journal."
+        ]
+      }
+    );
+    step(
+      "Publish the missing marker",
+      "Complete writes a fresh completion UUID with the strict JSON prepared marker and clears the acquisition evidence.",
+      "Every replica can now observe the normal propagation window for B.",
+      "good",
+      function (state) {
+        complete(state, TOKEN.completion2, {x509: AUTHORITY.x509B1}, true);
+        state.replicas.forEach(function (replica) {
+          replica.observedCompletion = TOKEN.completion2;
+          replica.status = "Prepared marker recovered";
+        });
+      }
+    );
+  }
+);
+
+function migrationState() {
+  var state = baseState("prod-server-0", "spire-server-ca-rotation-090a8b05521c");
+  state.lease.exists = false;
+  state.lease.resourceVersion = "";
+  state.scope.plugin = "aws_kms";
+  state.scope.clusterId = "not applicable";
+  state.scope.keyIdentifier = "prod-server-0 (selected pod)";
+  state.scope.requireExistingJournal = "not applicable";
+  state.replicas[0].name = "legacy-server-0";
+  state.replicas[1].name = "legacy-server-1";
+  state.replicas[2].name = "legacy-server-2";
+  state.replicas[0].status = "Stock aws_kms; identifier prod-server-0";
+  state.replicas[1].status = "Stock aws_kms; identifier prod-server-1";
+  state.replicas[2].status = "Stock aws_kms; identifier prod-server-2";
+
+  addExistingKey(state, "K1", "x509-CA-A", {"operator-owner": "legacy-pod-0"});
+  addExistingKey(state, "K2", "JWT-Signer-A", {"operator-owner": "legacy-pod-0"});
+  addExistingKey(state, "K3", "x509-CA-B", {"operator-owner": "legacy-pod-0"});
+  addExistingKey(state, "K4", "JWT-Signer-B", {"operator-owner": "legacy-pod-0"});
+  addExistingKey(state, "K5", "x509-CA-A", {"operator-owner": "legacy-pod-1"});
+  addExistingKey(state, "K6", "JWT-Signer-A", {"operator-owner": "legacy-pod-1"});
+  addExistingKey(state, "K7", "x509-CA-A", {"operator-owner": "legacy-pod-2"});
+  addExistingKey(state, "K8", "JWT-Signer-A", {"operator-owner": "legacy-pod-2"});
+
+  setAlias(state, "x509-CA-A", "K1", "prod-server-0");
+  setAlias(state, "JWT-Signer-A", "K2", "prod-server-0");
+  setAlias(state, "x509-CA-B", "K3", "prod-server-0");
+  setAlias(state, "JWT-Signer-B", "K4", "prod-server-0");
+  setAlias(state, "x509-CA-A", "K5", "prod-server-1");
+  setAlias(state, "JWT-Signer-A", "K6", "prod-server-1");
+  setAlias(state, "x509-CA-A", "K7", "prod-server-2");
+  setAlias(state, "JWT-Signer-A", "K8", "prod-server-2");
+
+  state.journal.selectedId = "101";
+  state.journal.activeX509AuthorityId = AUTHORITY.x509A1;
+  state.journal.rows = [
+    journalRow(
+      "101",
+      "X509",
+      "A",
+      AUTHORITY.x509A1,
+      "ACTIVE",
+      "2026-08-01T10:00:00Z",
+      "2026-10-30T10:00:00Z",
+      "K1"
+    ),
+    journalRow(
+      "101",
+      "JWT",
+      "A",
+      AUTHORITY.jwtA1,
+      "ACTIVE",
+      "2026-08-01T10:00:01Z",
+      "2026-10-30T10:00:01Z",
+      "K2"
+    ),
+    journalRow(
+      "101",
+      "X509",
+      "B",
+      AUTHORITY.x509B1,
+      "PREPARED",
+      "2026-08-10T10:00:00Z",
+      "2026-11-08T10:00:00Z",
+      "K3"
+    ),
+    journalRow(
+      "101",
+      "JWT",
+      "B",
+      AUTHORITY.jwtB1,
+      "PREPARED",
+      "2026-08-10T10:00:01Z",
+      "2026-11-08T10:00:01Z",
+      "K4"
+    ),
+    journalRow(
+      "102",
+      "X509",
+      "A",
+      AUTHORITY.migrationX509One,
+      "ACTIVE",
+      "2026-08-01T10:01:00Z",
+      "2026-10-30T10:01:00Z",
+      "K5"
+    ),
+    journalRow(
+      "102",
+      "JWT",
+      "A",
+      AUTHORITY.migrationJWTOne,
+      "ACTIVE",
+      "2026-08-01T10:01:01Z",
+      "2026-10-30T10:01:01Z",
+      "K6"
+    ),
+    journalRow(
+      "103",
+      "X509",
+      "A",
+      AUTHORITY.migrationX509Two,
+      "ACTIVE",
+      "2026-08-01T10:02:00Z",
+      "2026-10-30T10:02:00Z",
+      "K7"
+    ),
+    journalRow(
+      "103",
+      "JWT",
+      "A",
+      AUTHORITY.migrationJWTTwo,
+      "ACTIVE",
+      "2026-08-01T10:02:01Z",
+      "2026-10-30T10:02:01Z",
+      "K8"
+    )
+  ];
+  state.trust = [
+    trustRow("X509 certificate", AUTHORITY.x509A1, "published", "After expiry and normal bundle pruning"),
+    trustRow("X509 certificate", AUTHORITY.x509B1, "published", "After expiry and normal bundle pruning"),
+    trustRow("X509 certificate", AUTHORITY.migrationX509One, "published", "After expiry and normal bundle pruning"),
+    trustRow("X509 certificate", AUTHORITY.migrationX509Two, "published", "After expiry and normal bundle pruning"),
+    trustRow("JWT JWK", AUTHORITY.jwtA1, "published", "After expiry or explicit revoke and normal pruning"),
+    trustRow("JWT JWK", AUTHORITY.jwtB1, "published", "After expiry or explicit revoke and normal pruning"),
+    trustRow("JWT JWK", AUTHORITY.migrationJWTOne, "published", "After expiry or explicit revoke and normal pruning"),
+    trustRow("JWT JWK", AUTHORITY.migrationJWTTwo, "published", "After expiry or explicit revoke and normal pruning")
+  ];
+  state.replicas[0].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+  state.replicas[0].jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+  state.replicas[1].x509 = signer("x509-CA-A", "K5", AUTHORITY.migrationX509One);
+  state.replicas[1].jwt = signer("JWT-Signer-A", "K6", AUTHORITY.migrationJWTOne);
+  state.replicas[2].x509 = signer("x509-CA-A", "K7", AUTHORITY.migrationX509Two);
+  state.replicas[2].jwt = signer("JWT-Signer-A", "K8", AUTHORITY.migrationJWTTwo);
+  return state;
+}
+
+addScenario(
+  "Operations",
+  "Migration from one key per pod",
+  "Stop every stock writer, select one pod's complete signing state, and adopt it without changing ARNs, aliases, journal bytes, or published trust.",
+  migrationState(),
+  function (step) {
+    step(
+      "Capture all per-pod signing states",
+      "Three stock aws_kms replicas use three identifier scopes and have distinct physical keys and journals. The selected prod-server-0 pod already has ACTIVE and PREPARED slots.",
+      "Tokens and X.509 SVIDs from every pod are captured before cutover.",
+      "",
+      null,
+      {
+        source: "Existing aws_kms deployment",
+        actions: [
+          "Before migration: Operators record each pod's CA journal, full KMS key ARNs, aliases, bundle, JWKs, and sample credentials.",
+          "Before migration: The custom patch is not running yet."
+        ]
+      }
+    );
+    step(
+      "Drain to the selected pod",
+      "Scale the stock StatefulSet from three replicas to one. Verify prod-server-0 still issues with K1 and K2 and still publishes all recorded legacy trust.",
+      "No alias, key, journal, or bundle row changes during the drain.",
+      "",
+      function (state) {
+        state.replicas[1].ready = false;
+        state.replicas[1].status = "Stopped before cutover";
+        state.replicas[2].ready = false;
+        state.replicas[2].status = "Stopped before cutover";
+      },
+      {
+        source: "Kubernetes operator",
+        actions: [
+          "Operator: Scales the old aws_kms deployment from three pods to one selected pod.",
+          "Operator: The custom patch is not running. The Lease, KMS keys, journal, aliases, and bundle do not change."
+        ]
+      }
+    );
+    step(
+      "Pre-create the Lease and prepare the new config",
+      "Create spire-server-ca-rotation-090a8b05521c while the last stock replica is still running. Prepare aws_kms_cluster with cluster_id and key_identifier_value set to prod-server-0, but do not start it.",
+      "The new deployment is ready for cutover without overlapping the stock writer.",
+      "",
+      function (state) {
+        state.lease = newLease("spire-server-ca-rotation-090a8b05521c");
+      },
+      {
+        source: "Kubernetes operator",
+        actions: [
+          "Operator: Creates the empty spire/spire-server-ca-rotation-090a8b05521c Lease.",
+          "Operator: Prepares the aws_kms_cluster configuration but does not start it yet."
+        ]
+      }
+    );
+    step(
+      "Stop all stock writers",
+      "Scale the final stock replica to zero. Capture the selected journal, bundle, aliases, tags, and physical key list after all writers are stopped.",
+      "There is no mixed window where aws_kms and aws_kms_cluster can write the same aliases.",
+      "warn",
+      function (state) {
+        state.replicas[0].ready = false;
+        state.replicas[0].status = "Stopped for cutover";
+      },
+      {
+        source: "Kubernetes operator",
+        actions: [
+          "Operator: Stops the last aws_kms pod and records one final copy of the journal, bundle, aliases, tags, and KMS keys.",
+          "Operator: Does not start aws_kms_cluster until every aws_kms server has stopped."
+        ]
+      }
+    );
+    step(
+      "Start one cluster-mode replica in adoption-only mode",
+      "Set require_existing_journal to true and initially deny create, alias mutation, and key deletion. The replica finds the selected journal through the existing K1 through K4 aliases and adds five ownership and liveness tags. Legacy keys get no invented create or retirement token.",
+      "K1 through K4 keep the same full ARNs, aliases, fingerprints, authority IDs, and journal bytes. CreateKey count remains zero.",
+      "good",
+      function (state) {
+        state.scope.plugin = "aws_kms_cluster";
+        state.scope.clusterId = "prod-server-0";
+        state.scope.keyIdentifier = "prod-server-0";
+        state.scope.requireExistingJournal = "true";
+        ["K1", "K2", "K3", "K4"].forEach(function (keyName) {
+          var item = findKey(state, keyName);
+          var ownership = baseTags("prod-server-0", item.logicalKey, "1787184000");
+          Object.keys(ownership).forEach(function (name) {
+            item.tags[name] = ownership[name];
+          });
+          item.note = "Selected legacy key; adopted without create token";
+        });
+        state.replicas[0].ready = true;
+        state.replicas[0].name = "spire-server-0";
+        state.replicas[0].bootId = BOOT_ID.server0Restarted;
+        state.replicas[0].status = "Adopted selected journal and exact legacy ARNs";
+        state.replicas[0].observedCompletion = "";
+      },
+      {
+        source: "Operator and custom patch",
+        actions: [
+          "Operator: Starts one aws_kms_cluster server with require_existing_journal=true. Key creation, alias changes, and key deletion remain blocked.",
+          "AWS KMS key plugin: Reads the existing K1 through K4 aliases and full ARNs.",
+          "AWS KMS key plugin: Checks their public keys against the CA journal kept by the pod selected for migration.",
+          "AWS KMS key plugin: Adds only the five ownership and liveness tags shown below.",
+          "SPIRE server memory: Keeps the existing key IDs. It loads K1 for X.509 signing and K2 for JWT signing.",
+          "SPIRE server memory: Creates no key and changes no alias, journal row, certificate, or JWK."
+        ]
+      }
+    );
+    step(
+      "Enable scoped mutation and scale to three",
+      "After adoption proof, grant the runtime its normal scoped KMS actions and start two followers. They reload the selected journal and keys and create nothing.",
+      "The new cluster has one shared signing state. Nonselected pod-1 and pod-2 keys remain historical and require operator-managed cleanup.",
+      "good",
+      function (state) {
+        state.replicas[1].ready = true;
+        state.replicas[1].name = "spire-server-1";
+        state.replicas[1].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+        state.replicas[1].jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+        state.replicas[1].status = "Follower adopted selected journal and keys";
+        state.replicas[2].ready = true;
+        state.replicas[2].name = "spire-server-2";
+        state.replicas[2].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+        state.replicas[2].jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+        state.replicas[2].status = "Follower adopted selected journal and keys";
+      },
+      {
+        source: "Operator and custom patch",
+        actions: [
+          "Operator: Allows KMS key creation, alias changes, tagging, and scheduling old keys for deletion.",
+          "Operator: Scales aws_kms_cluster from one server to three.",
+          "New servers: Read the same journal, keys, and aliases. They load K1 for X.509 signing and K2 for JWT signing.",
+          "New servers: Do not create a key."
+        ]
+      }
+    );
+    step(
+      "Keep old public trust until normal pruning",
+      "Migration does not remove any pre-migration JWT JWK or X.509 certificate. A historical JWK first becomes eligible 24 hours after NotAfter; the six-hour pruning job normally removes it on the next successful pass. Outages and the last-authority safeguard can delay that.",
+      "OIDC drops the JWK only after its next successful source poll sees the pruned bundle. X.509 roots follow normal bundle expiry or coordinated revoke. Physical KMS key cleanup is separate.",
+      "good",
+      null,
+      {
+        source: "SPIRE bundle pruning and OIDC",
+        actions: [
+          "Migration: Does not remove old certificates or JWKs during cutover.",
+          "Later cleanup: Normal SPIRE expiry and pruning jobs remove them when they are old enough. OIDC updates after its next successful refresh."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Operations",
+  "Lease and dependency failures",
+  "When the Lease, database, or KMS cannot be checked safely, rotation stops without creating a second key.",
+  steadyState(),
+  function (step) {
+    step(
+      "Missing Lease without create access, or malformed Lease",
+      "A get-and-update-only deployment needs a pre-created Lease. A deployment with explicit create access may create a missing Lease. Any existing rotation annotation must parse and agree with its token.",
+      "Startup remains unready. No KMS or datastore mutation is attempted.",
+      "bad",
+      function (state) {
+        state.lease = newLease(DEFAULT_LEASE);
+        state.lease.exists = false;
+        state.lease.resourceVersion = "";
+        state.replicas.forEach(function (replica) {
+          replica.ready = false;
+          replica.status = "Startup rejected before rotation";
+        });
+      },
+      {
+        source: "Deployment input and custom patch",
+        actions: [
+          "Startup problem: The required Lease is missing and SPIRE cannot create it, or the Lease contains values that do not make sense together.",
+          "Startup result: Every server stays unready. The patch stops before changing KMS or the database."
+        ]
+      }
+    );
+    step(
+      "Lease read or update permission is removed",
+      "After the Lease is created and startup succeeds, its access is removed. The 10-second scheduled checks start failing because replicas cannot read or update the lock.",
+      "Readiness stays healthy through ten consecutive failures. Existing exact-ARN signers continue issuing, and liveness remains healthy.",
+      "warn",
+      function (state) {
+        state.lease = newLease(DEFAULT_LEASE);
+        state.lease.leaseDurationSeconds = "30";
+        state.lease.acquireTime = "2026-08-19T09:00:24Z";
+        state.lease.renewTime = "2026-08-19T09:00:25Z";
+        state.lease.leaseTransitions = 2;
+        state.lease.resourceVersion = "12010";
+        state.lease.annotations[ANNOTATION.completionToken] = TOKEN.completion0;
+        state.replicas.forEach(function (replica) {
+          replica.ready = true;
+          replica.status = "Lease check failing; exact signer retained";
+        });
+      },
+      {
+        source: "Kubernetes RBAC and custom patch",
+        actions: [
+          "Kubernetes permissions: This scenario removes permission to read or update the Lease. The custom patch does not make that change.",
+          "Health check: Counts each failed Lease check. For the first ten failures, the servers keep their signers and stay ready and live."
+        ]
+      }
+    );
+    step(
+      "The eleventh scheduled check fails",
+      "After about 110 seconds of continuous failure, the coordinated rotation health threshold is exceeded.",
+      "Readiness becomes false. No signer, journal row, key, alias, or completion token changes.",
+      "bad",
+      function (state) {
+        state.replicas.forEach(function (replica) {
+          replica.ready = false;
+          replica.status = "Rotation checks failed 11 times; signer retained";
+        });
+      }
+    );
+    step(
+      "Datastore or tag discovery is unavailable",
+      "The server cannot read a trustworthy CA journal or a complete KMS key list.",
+      "It refuses bootstrap, adoption, prepare, activate, taint, and revoke. Physical key and completion counts do not change.",
+      "bad"
+    );
+    step(
+      "Ownership is lost during a mutation",
+      "After the dependencies recover, a failed renewal records ownership loss before any local signer installation. A successor waits through the full 30-second TTL, takes over, and reloads the recovery evidence.",
+      "The next owner reloads and finishes recovery. The old owner cannot load outdated state.",
+      "warn",
+      function (state) {
+        state.replicas.forEach(function (replica) {
+          replica.ready = true;
+        });
+        acquire(state, 0, TOKEN.aliasRetry, "2026-08-21T09:00:00Z", "mutating");
+        state.replicas[0].ready = false;
+        state.replicas[0].status = "Renewal lost; local install blocked";
+        acquire(state, 1, TOKEN.recovery, "2026-08-21T09:00:32Z", "recovering");
+        state.replicas[1].status = "Successor owns recovery generation";
+      },
+      {
+        source: "Kubernetes Lease and custom patch",
+        actions: [
+          "Old owner: Detects that it can no longer renew the Lease. It stops before loading a signer and becomes unready.",
+          "Next owner: Waits until the Lease has stayed unchanged for 30 seconds, then takes it with a new recovery token.",
+          "Next owner: Reloads the saved recovery data before changing anything."
+        ]
+      }
+    );
+    step(
+      "Restore the dependency and reload",
+      "A valid owner completes recovery and publishes a new completion UUID. Every replica reloads before readiness.",
+      "K1 and K2 remain the shared keys. The outage did not create another key.",
+      "good",
+      function (state) {
+        complete(state, TOKEN.completion3, {}, false);
+        state.replicas.forEach(function (replica) {
+          replica.ready = true;
+          replica.leaseHolder = false;
+          replica.observedCompletion = TOKEN.completion3;
+          replica.status = "Dependency restored; state reloaded";
+        });
+      }
+    );
+  }
+);
+
+addScenario(
+  "Operations",
+  "Restart, scale, and cluster isolation",
+  "New servers load the saved shared state, and another cluster cannot use this cluster's keys.",
+  steadyState(),
+  function (step) {
+    step(
+      "Scale from three replicas to five",
+      "The two new replicas read the same Lease completion, aliases, complete tag inventory, journal, and bundle.",
+      "They install K1 and K2 exact routes. CreateKey and alias counts do not change.",
+      "good",
+      function (state) {
+        state.replicas.push(newReplica(
+          "spire-server-3",
+          "spire-server-3_14dc83c1-aee2-4d5e-b8f8-e5d909608d49"
+        ));
+        state.replicas.push(newReplica(
+          "spire-server-4",
+          "spire-server-4_b1d5405e-5735-4ae4-b067-33a6652d0757"
+        ));
+        state.replicas.slice(3).forEach(function (replica) {
+          replica.x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
+          replica.jwt = signer("JWT-Signer-A", "K2", AUTHORITY.jwtA1);
+          replica.observedCompletion = TOKEN.completion0;
+          replica.status = "Joined by reload; no KMS mutation";
+        });
+      },
+      {
+        source: "Operator and custom patch",
+        actions: [
+          "Operator: Scales the StatefulSet from three servers to five.",
+          "New servers: Read the completion token, aliases, tagged KMS keys, CA journal, and bundle.",
+          "New servers: Load K1 for X.509 signing and K2 for JWT signing. They do not change KMS, the Lease, or the database."
+        ]
+      }
+    );
+    step(
+      "Restart all replicas together",
+      "Every process gets a new boot identity and must rediscover the existing journal before readiness.",
+      "The restarted set converges on the same ARNs and authority IDs with no key growth.",
+      "good",
+      function (state) {
+        state.replicas[0].bootId = BOOT_ID.server0Restarted;
+        state.replicas[1].bootId = "spire-server-1_77ab23bf-9018-4121-b127-dba8b4172ae1";
+        state.replicas[2].bootId = "spire-server-2_68dc9240-f950-4428-8e55-df1bcd02468b";
+        state.replicas[3].bootId = "spire-server-3_25ed94a2-62f4-4d6b-a6c4-37d1430be8b6";
+        state.replicas[4].bootId = "spire-server-4_a1026dbe-6ef9-48bb-a999-497e485b2d0b";
+        state.replicas.forEach(function (replica) {
+          replica.status = "Restarted and reloaded existing journal";
+        });
+      },
+      {
+        source: "Operator and custom patch",
+        actions: [
+          "Operator: Restarts all five servers. Each new process gets a new boot token.",
+          "Restarted servers: Read the existing journal before becoming ready. They load K1 for X.509 signing and K2 for JWT signing.",
+          "Restarted servers: Do not create a key or change an alias."
+        ]
+      }
+    );
+    step(
+      "A second cluster uses a different scope",
+      "peer-cluster has a different cluster ID, Lease, aliases, and ownership tags, even though it shares the AWS account, region, and trust domain.",
+      "Its keys cannot be candidates for prod-cluster.",
+      "",
+      function (state) {
+        var peerLease = newLease("spire-server-ca-rotation-8580bdc0c866");
+        peerLease.scope = "peer-cluster";
+        peerLease.resourceVersion = "88001";
+        peerLease.leaseDurationSeconds = "30";
+        peerLease.acquireTime = "2026-08-19T09:16:40Z";
+        peerLease.renewTime = "2026-08-19T09:16:44Z";
+        peerLease.leaseTransitions = 1;
+        peerLease.annotations[ANNOTATION.completionToken] = TOKEN.peerCompletion;
+        state.relatedLeases.push(peerLease);
+        addExistingKey(
+          state,
+          "K7",
+          "x509-CA-A",
+          createdTags(
+            "peer-cluster",
+            "x509-CA-A",
+            "1787131001",
+            "890f9e6e-1183-4b32-b699-620891e71802"
+          ),
+          "Owned by peer-cluster"
+        );
+        addExistingKey(
+          state,
+          "K8",
+          "JWT-Signer-A",
+          createdTags(
+            "peer-cluster",
+            "JWT-Signer-A",
+            "1787131002",
+            "890f9e6e-1183-4b32-b699-620891e71802"
+          ),
+          "Owned by peer-cluster"
+        );
+        setAlias(state, "x509-CA-A", "K7", "peer-cluster");
+        setAlias(state, "JWT-Signer-A", "K8", "peer-cluster");
+      },
+      {
+        source: "Independent peer cluster",
+        actions: [
+          "peer-cluster: Has its own Lease, completion token, K7 and K8 tags, and aliases. peer-cluster wrote those values.",
+          "prod-cluster: Sees those keys in the shared AWS account but ignores them because their tags and alias names say peer-cluster."
+        ]
+      }
+    );
+    step(
+      "A scope mismatch is rejected",
+      "If ca_rotation_lock.cluster_id and the cluster KeyManager identifier differ, startup stops before catalog mutation.",
+      "One Lease scope cannot accidentally write another alias scope.",
+      "bad",
+      null,
+      {
+        actions: [
+          "Startup check: Compares ca_rotation_lock.cluster_id with the aws_kms_cluster key identifier.",
+          "Startup check: If they are different, stops before configuring the plugin or taking the Lease."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Operations",
+  "Background stale-key disposal",
+  "Periodic liveness tags support scoped cleanup of a permanently abandoned cluster. Operators still monitor the seven-day cancellation window.",
+  steadyState(),
+  function (step) {
+    step(
+      "A foreign cluster has stopped updating liveness",
+      "old-cluster keys share the trust domain but have a different cluster ID. Their last-update values are older than 14 days.",
+      "They are not candidates for prod-cluster signing or journal discovery.",
+      "",
+      function (state) {
+        var oldX509 = createdTags(
+          "old-cluster",
+          "x509-CA-A",
+          "1784500000",
+          "23220b91-8328-4a12-bf16-6cd5d27e9f08"
+        );
+        var oldJWT = createdTags(
+          "old-cluster",
+          "JWT-Signer-A",
+          "1784500001",
+          TOKEN.oldClusterJWT
+        );
+        addExistingKey(state, "K7", "x509-CA-A", oldX509, "Foreign stale cluster");
+        addExistingKey(state, "K8", "JWT-Signer-A", oldJWT, "Foreign stale cluster");
+        setAlias(state, "x509-CA-A", "K7", "old-cluster");
+        setAlias(state, "JWT-Signer-A", "K8", "old-cluster");
+      },
+      {
+        source: "Abandoned foreign cluster",
+        actions: [
+          "old-cluster: Previously created K7, K8, and their aliases.",
+          "prod-cluster: Makes no change in this step. It only sees that the keys are old and belong to another cluster."
+        ]
+      }
+    );
+    step(
+      "The live cluster refreshes its own tags",
+      "Every six hours, prod-cluster verifies exact ownership and updates spire-last-update on all of its tagged keys, including uncached history. Keys with committed retirement proof are skipped.",
+      "A cleanup pass cannot classify K1 or K2 as stale.",
+      "good",
+      function (state) {
+        findKey(state, "K1").tags["spire-last-update"] = "1794578400";
+        findKey(state, "K2").tags["spire-last-update"] = "1794578400";
+      }
+    );
+    step(
+      "The disposal pass validates the foreign keys",
+      "Every 48 hours, the job re-reads each candidate's exact ARN, state, complete tags, age, owner cluster, and aliases.",
+      "old-cluster must stay fenced and its ID must not be reused. Ambiguous candidates, migration history, partial tags, and current-cluster retirement records are left for operator review.",
+      "",
+      null,
+      {
+        actions: [
+          "Cleanup job: Every 48 hours, reads each possible old key by its full ARN.",
+          "Cleanup job: Checks the KMS state, all tags, key age, owner cluster ID, and every alias that points to the key.",
+          "Cleanup job: Leaves the key unchanged if its SPIRE tags are missing or disagree, or if an unexpected alias points to it.",
+          "Cleanup job: Also leaves it unchanged if the cluster ID may have been reused or the key may still be needed."
+        ]
+      }
+    );
+    step(
+      "Validate foreign aliases, then schedule exact ARNs",
+      "After repeated checks, the job allows only the expected old-cluster aliases. It calls ScheduleKeyDeletion once for K7 and K8 with a seven-day window and leaves the aliases in place.",
+      "Both keys enter PendingDeletion immediately. Their old-cluster aliases still name them; prod-cluster aliases and keys are unchanged.",
+      "warn",
+      function (state) {
+        findKey(state, "K7").state = "PendingDeletion";
+        findKey(state, "K7").deletionDate = "2026-11-22T14:00:00Z";
+        findKey(state, "K7").note = "Foreign stale key; expected old-cluster alias checked";
+        findKey(state, "K8").state = "PendingDeletion";
+        findKey(state, "K8").deletionDate = "2026-11-22T14:00:01Z";
+        findKey(state, "K8").note = "Foreign stale key; expected old-cluster alias checked";
+        state.counters.scheduleDeletion += 2;
+      }
+    );
+    step(
+      "Reconcile an unknown deletion response",
+      "If ScheduleKeyDeletion returns an error after committing, the job reads the exact ARN. PendingDeletion or NotFound proves success; any other result remains an error.",
+      "Validation and scheduling are not atomic. The runtime cannot cancel deletion, so an operator monitors the key and may cancel an unsafe schedule within seven days.",
+      "good",
+      null,
+      {
+        actions: [
+          "Cleanup job: If the deletion response is unclear, reads the key again by its full ARN.",
+          "Cleanup job: PendingDeletion means the key is scheduled for deletion. NotFound means the key is already gone.",
+          "Cleanup job: Either result needs no second deletion request. Any other result is reported for an operator to review."
+        ]
+      }
+    );
+  }
+);
+
+addScenario(
+  "Operations",
+  "Invalid authority changes are no-ops",
+  "Bad administrative requests preserve the current signer, journal, Lease completion, keys, and aliases.",
+  steadyState(),
+  function (step) {
+    step(
+      "Activate an unknown authority ID",
+      "The request fails validation before a mutation begins.",
+      "The response is InvalidArgument and all saved state stays unchanged.",
+      "bad"
+    );
+    step(
+      "Taint the current authority",
+      "The current signing authority cannot be tainted while it is active.",
+      "No Lease completion UUID, bundle row, journal row, tag, or alias changes.",
+      "bad"
+    );
+    step(
+      "Revoke the current authority",
+      "The current authority cannot be revoked because doing so would remove the active trust path.",
+      "The request changes nothing on any server.",
+      "bad"
+    );
+    step(
+      "Valid issuance continues",
+      "After each rejected request, every replica still signs through K1 and K2 and publishes the same authority IDs.",
+      "Definitive validation failures do not leave acquisition or recovery evidence.",
+      "good"
+    );
+  }
+);
+
+var scenarioSelect = document.getElementById("scenarioSelect");
+var stepSelect = document.getElementById("stepSelect");
+var previousButton = document.getElementById("previousButton");
+var nextButton = document.getElementById("nextButton");
+var scenarioIndex = 0;
+var stepIndex = 0;
+
+function element(name, className, text) {
+  var node = document.createElement(name);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+  return node;
+}
+
+function codeNode(value) {
+  return element("code", "", value || "(not set)");
+}
+
+function stateNode(value) {
+  var className = String(value).toLowerCase().replace(/[^a-z]+/g, "-");
+  return element("span", "state " + className, value);
+}
+
+function appendCell(row, value) {
+  var cell = element("td");
+  if (value && value.nodeType) {
+    cell.appendChild(value);
+  } else {
+    cell.textContent = value === "" || value === null || value === undefined
+      ? "(not set)"
+      : String(value);
+    if (value === "" || value === null || value === undefined) {
+      cell.className = "empty";
+    }
+  }
+  row.appendChild(cell);
+}
+
+function renderTable(target, headers, rows, className, labelledBy) {
+  target.replaceChildren();
+  var table = element("table", className || "");
+  if (labelledBy) {
+    table.setAttribute("aria-labelledby", labelledBy);
+  }
+  var head = element("thead");
+  var headRow = element("tr");
+  headers.forEach(function (header) {
+    headRow.appendChild(element("th", "", header));
+  });
+  head.appendChild(headRow);
+  table.appendChild(head);
+  var body = element("tbody");
+  if (!rows.length) {
+    var emptyRow = element("tr");
+    var emptyCell = element("td", "empty", "No data");
+    emptyCell.colSpan = headers.length;
+    emptyRow.appendChild(emptyCell);
+    body.appendChild(emptyRow);
+  } else {
+    rows.forEach(function (values) {
+      var row = element("tr");
+      values.forEach(function (value) {
+        appendCell(row, value);
+      });
+      body.appendChild(row);
+    });
+  }
+  table.appendChild(body);
+  target.appendChild(table);
+}
+
+function routeNode(route) {
+  if (!route) {
+    return element("span", "empty", "(not installed)");
+  }
+  var wrapper = element("div");
+  wrapper.appendChild(element("div", "", route.logicalKey));
+  wrapper.appendChild(codeNode(route.arn));
+  wrapper.appendChild(element("div", "", "Authority: " + route.authorityId));
+  return wrapper;
+}
+
+function tagsNode(tags) {
+  var list = element("dl", "tag-list");
+  var names = Object.keys(tags).sort();
+  if (!names.length) {
+    return element("span", "empty", "(no SPIRE tags)");
+  }
+  names.forEach(function (name) {
+    list.appendChild(element("dt", "", name));
+    var value = element("dd");
+    value.appendChild(codeNode(tags[name]));
+    list.appendChild(value);
+  });
+  return list;
+}
+
+function sameData(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function displayDeltaValue(value) {
+  if (value === undefined) {
+    return "(not present)";
+  }
+  if (value === null || value === "") {
+    return "(not set)";
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  return String(value);
+}
+
+function addStateChange(changes, area, field, before, after) {
+  if (sameData(before, after)) {
+    return;
+  }
+  changes.push({
+    area: area,
+    field: field,
+    before: displayDeltaValue(before),
+    after: displayDeltaValue(after),
+    beforeRaw: before,
+    afterRaw: after
+  });
+}
+
+function sortedKeyUnion(left, right) {
+  var keys = [];
+  [left || {}, right || {}].forEach(function (value) {
+    Object.keys(value).forEach(function (key) {
+      if (keys.indexOf(key) === -1) {
+        keys.push(key);
+      }
+    });
+  });
+  return keys.sort();
+}
+
+function recordsBy(items, identity) {
+  var result = {};
+  (items || []).forEach(function (item) {
+    result[identity(item)] = item;
+  });
+  return result;
+}
+
+function routeDescription(route) {
+  if (route === undefined) {
+    return undefined;
+  }
+  if (route === null) {
+    return "(not installed)";
+  }
+  return "logicalKey=" + route.logicalKey +
+    "; arn=" + route.arn +
+    "; authorityId=" + route.authorityId;
+}
+
+function collectLeaseChanges(changes, label, before, after) {
+  var fields = [
+    ["scope", "scope"],
+    ["exists", "exists"],
+    ["apiVersion", "apiVersion"],
+    ["kind", "kind"],
+    ["metadata.namespace", "namespace"],
+    ["metadata.name", "name"],
+    ["metadata.resourceVersion", "resourceVersion"],
+    ["spec.holderIdentity", "holderIdentity"],
+    ["spec.leaseDurationSeconds", "leaseDurationSeconds"],
+    ["spec.acquireTime", "acquireTime"],
+    ["spec.renewTime", "renewTime"],
+    ["spec.leaseTransitions", "leaseTransitions"]
+  ];
+  fields.forEach(function (entry) {
+    addStateChange(
+      changes,
+      "Kubernetes Lease",
+      label + "." + entry[0],
+      before ? before[entry[1]] : undefined,
+      after ? after[entry[1]] : undefined
+    );
+  });
+  sortedKeyUnion(before && before.annotations, after && after.annotations).forEach(function (name) {
+    addStateChange(
+      changes,
+      "Kubernetes Lease",
+      label + ".metadata.annotations[" + name + "]",
+      before && before.annotations ? before.annotations[name] : undefined,
+      after && after.annotations ? after.annotations[name] : undefined
+    );
+  });
+}
+
+function collectStepChanges(before, after) {
+  var changes = [];
+  var scopeFields = [
+    ["scope.plugin", "plugin"],
+    ["scope.trustDomain", "trustDomain"],
+    ["scope.clusterId", "clusterId"],
+    ["scope.keyIdentifier", "keyIdentifier"],
+    ["scope.account", "account"],
+    ["scope.region", "region"],
+    ["scope.requireExistingJournal", "requireExistingJournal"],
+    ["scope.allowLeaseCreation", "allowLeaseCreation"]
+  ];
+  scopeFields.forEach(function (entry) {
+    addStateChange(
+      changes,
+      "Server configuration",
+      entry[0],
+      before.scope[entry[1]],
+      after.scope[entry[1]]
+    );
+  });
+
+  var beforeReplicas = recordsBy(before.replicas, function (replica) {
+    return replica.name;
+  });
+  var afterReplicas = recordsBy(after.replicas, function (replica) {
+    return replica.name;
+  });
+  var replicaFields = [
+    ["bootIdentity", "bootId"],
+    ["ready", "ready"],
+    ["leaseOwner", "leaseHolder"],
+    ["observedCompletion", "observedCompletion"],
+    ["status", "status"]
+  ];
+  sortedKeyUnion(beforeReplicas, afterReplicas).forEach(function (replicaName) {
+    var beforeReplica = beforeReplicas[replicaName];
+    var afterReplica = afterReplicas[replicaName];
+    var replicaLabel = "replicas[" + replicaName + "]";
+    replicaFields.forEach(function (entry) {
+      addStateChange(
+        changes,
+        "Replica process memory",
+        replicaLabel + "." + entry[0],
+        beforeReplica ? beforeReplica[entry[1]] : undefined,
+        afterReplica ? afterReplica[entry[1]] : undefined
+      );
+    });
+    addStateChange(
+      changes,
+      "Replica process memory",
+      replicaLabel + ".x509Signer",
+      routeDescription(beforeReplica && beforeReplica.x509),
+      routeDescription(afterReplica && afterReplica.x509)
+    );
+    addStateChange(
+      changes,
+      "Replica process memory",
+      replicaLabel + ".jwtSigner",
+      routeDescription(beforeReplica && beforeReplica.jwt),
+      routeDescription(afterReplica && afterReplica.jwt)
+    );
+  });
+
+  var primaryLease = after.lease || before.lease;
+  collectLeaseChanges(
+    changes,
+    "primary[" + primaryLease.namespace + "/" + primaryLease.name + "]",
+    before.lease,
+    after.lease
+  );
+  var beforeLeases = recordsBy(before.relatedLeases, function (lease) {
+    return lease.namespace + "/" + lease.name;
+  });
+  var afterLeases = recordsBy(after.relatedLeases, function (lease) {
+    return lease.namespace + "/" + lease.name;
+  });
+  sortedKeyUnion(beforeLeases, afterLeases).forEach(function (identity) {
+    collectLeaseChanges(
+      changes,
+      "related[" + identity + "]",
+      beforeLeases[identity],
+      afterLeases[identity]
+    );
+  });
+
+  addStateChange(
+    changes,
+    "CA journal",
+    "journal.selectedId",
+    before.journal.selectedId,
+    after.journal.selectedId
+  );
+  addStateChange(
+    changes,
+    "CA journal",
+    "journal.activeX509AuthorityId",
+    before.journal.activeX509AuthorityId,
+    after.journal.activeX509AuthorityId
+  );
+  var journalIdentity = function (row) {
+    return row.journalId + "|" + row.type + "|" + row.slot + "|" + row.authorityId;
+  };
+  var beforeJournalRows = recordsBy(before.journal.rows, journalIdentity);
+  var afterJournalRows = recordsBy(after.journal.rows, journalIdentity);
+  sortedKeyUnion(beforeJournalRows, afterJournalRows).forEach(function (identity) {
+    var beforeRow = beforeJournalRows[identity];
+    var afterRow = afterJournalRows[identity];
+    var field = "journal.rows[" + identity + "]";
+    if (!beforeRow || !afterRow) {
+      addStateChange(
+        changes,
+        "CA journal",
+        field + ".record",
+        beforeRow ? "present" : undefined,
+        afterRow ? "present" : undefined
+      );
+      ["status", "issuedAt", "notAfter", "keyArn"].forEach(function (name) {
+        addStateChange(
+          changes,
+          "CA journal",
+          field + "." + (name === "keyArn" ? "resolvedKeyArn" : name),
+          beforeRow ? beforeRow[name] : undefined,
+          afterRow ? afterRow[name] : undefined
+        );
+      });
+      return;
+    }
+    ["status", "issuedAt", "notAfter", "keyArn"].forEach(function (name) {
+      addStateChange(
+        changes,
+        "CA journal",
+        field + "." + (name === "keyArn" ? "resolvedKeyArn" : name),
+        beforeRow[name],
+        afterRow[name]
+      );
+    });
+  });
+
+  var trustIdentity = function (row) {
+    return row.kind + "|" + row.authorityId;
+  };
+  var beforeTrust = recordsBy(before.trust, trustIdentity);
+  var afterTrust = recordsBy(after.trust, trustIdentity);
+  sortedKeyUnion(beforeTrust, afterTrust).forEach(function (identity) {
+    var beforeRow = beforeTrust[identity];
+    var afterRow = afterTrust[identity];
+    var field = "bundle[" + identity + "]";
+    if (!beforeRow || !afterRow) {
+      addStateChange(
+        changes,
+        "Trust bundle and OIDC source",
+        field + ".record",
+        beforeRow ? "present" : undefined,
+        afterRow ? "present" : undefined
+      );
+      addStateChange(
+        changes,
+        "Trust bundle and OIDC source",
+        field + ".state",
+        beforeRow ? beforeRow.state : undefined,
+        afterRow ? afterRow.state : undefined
+      );
+      addStateChange(
+        changes,
+        "Trust bundle and OIDC source",
+        field + ".removalRule",
+        beforeRow ? beforeRow.pruneWhen : undefined,
+        afterRow ? afterRow.pruneWhen : undefined
+      );
+      return;
+    }
+    addStateChange(changes, "Trust bundle and OIDC source", field + ".state", beforeRow.state, afterRow.state);
+    addStateChange(changes, "Trust bundle and OIDC source", field + ".removalRule", beforeRow.pruneWhen, afterRow.pruneWhen);
+  });
+
+  var beforeKeys = recordsBy(before.keys, function (key) { return key.arn; });
+  var afterKeys = recordsBy(after.keys, function (key) { return key.arn; });
+  sortedKeyUnion(beforeKeys, afterKeys).forEach(function (arn) {
+    var beforeKey = beforeKeys[arn];
+    var afterKey = afterKeys[arn];
+    var keyName = afterKey && afterKey.name || beforeKey && beforeKey.name || arn;
+    var field = beforeKey && afterKey
+      ? "keys[" + keyName + "; " + arn + "]"
+      : "keys[" + keyName + "]";
+    if (!beforeKey || !afterKey) {
+      addStateChange(
+        changes,
+        "AWS KMS",
+        field + ".record",
+        beforeKey ? "present" : undefined,
+        afterKey ? "present" : undefined
+      );
+      ["logicalKey", "arn", "fingerprint", "keySpec", "keyUsage", "state", "deletionDate", "note"].forEach(function (name) {
+        addStateChange(
+          changes,
+          "AWS KMS",
+          field + "." + name,
+          beforeKey ? beforeKey[name] : undefined,
+          afterKey ? afterKey[name] : undefined
+        );
+      });
+    } else {
+      ["name", "logicalKey", "arn", "fingerprint", "keySpec", "keyUsage", "state", "deletionDate", "note"].forEach(function (name) {
+        addStateChange(
+          changes,
+          "AWS KMS",
+          field + "." + name,
+          beforeKey[name],
+          afterKey[name]
+        );
+      });
+    }
+    sortedKeyUnion(beforeKey && beforeKey.tags, afterKey && afterKey.tags).forEach(function (name) {
+      addStateChange(
+        changes,
+        "AWS KMS",
+        field + ".tags[" + name + "]",
+        beforeKey && beforeKey.tags ? beforeKey.tags[name] : undefined,
+        afterKey && afterKey.tags ? afterKey.tags[name] : undefined
+      );
+    });
+  });
+
+  var beforeAliases = recordsBy(before.aliases, function (alias) { return alias.alias; });
+  var afterAliases = recordsBy(after.aliases, function (alias) { return alias.alias; });
+  sortedKeyUnion(beforeAliases, afterAliases).forEach(function (alias) {
+    addStateChange(
+      changes,
+      "AWS KMS",
+      "aliases[" + alias + "].targetArn",
+      beforeAliases[alias] ? beforeAliases[alias].targetArn : undefined,
+      afterAliases[alias] ? afterAliases[alias].targetArn : undefined
+    );
+  });
+
+  addStateChange(
+    changes,
+    "AWS call counters",
+    "counters.createKey",
+    before.counters.createKey,
+    after.counters.createKey
+  );
+  addStateChange(
+    changes,
+    "AWS call counters",
+    "counters.scheduleDeletion",
+    before.counters.scheduleDeletion,
+    after.counters.scheduleDeletion
+  );
+  return changes;
+}
+
+function hasChange(changes, area, fieldPart) {
+  return changes.some(function (change) {
+    return change.area === area && (!fieldPart || change.field.indexOf(fieldPart) !== -1);
+  });
+}
+
+function matchingChange(changes, area, fieldPart) {
+  return changes.find(function (change) {
+    return change.area === area && change.field.indexOf(fieldPart) !== -1;
+  });
+}
+
+function valueChangedTo(changes, area, fieldPart, value) {
+  return changes.some(function (change) {
+    return change.area === area &&
+      change.field.indexOf(fieldPart) !== -1 &&
+      change.afterRaw === value;
+  });
+}
+
+function numericIncrease(changes, field) {
+  return changes.some(function (change) {
+    return change.field === field &&
+      typeof change.beforeRaw === "number" &&
+      typeof change.afterRaw === "number" &&
+      change.afterRaw > change.beforeRaw;
+  });
+}
+
+function patchActionsForStep(currentStep, changes) {
+  if (currentStep.actions) {
+    return currentStep.actions;
+  }
+
+  if (currentStep.source !== "Custom patch") {
+    return [
+      currentStep.source + ": This state comes from outside the patch.",
+      currentStep.source + ": The patch only reads it unless this step says that it does more."
+    ];
+  }
+
+  if (!changes.length) {
+    var readOnlyText = currentStep.title + " " + currentStep.text;
+    if (/propagation window|early activation/i.test(readOnlyText)) {
+      return [
+        "CA manager: Reads the marker for the prepared key.",
+        "CA manager: This server waits 20 seconds after it sees that marker.",
+        "CA manager: If the wait is not over, it stops without taking the Lease or changing data."
+      ];
+    }
+    if (/tag result|pending token/i.test(readOnlyText)) {
+      return [
+        "AWS KMS key plugin: Looks for a KMS key with the saved create token.",
+        "AWS KMS key plugin: No key is visible yet, so it stops instead of creating a second key."
+      ];
+    }
+    if (/unknown authority|taint the current|revoke the current/i.test(readOnlyText)) {
+      return [
+        "Request check: Checks the requested CA record ID and status before taking the Lease.",
+        "Request check: The request is not allowed, so nothing changes."
+      ];
+    }
+    if (/valid issuance/i.test(readOnlyText)) {
+      return [
+        "Signing: Keeps using the installed K1 and K2 key ARNs.",
+        "Signing: The rejected request leaves no work to recover or clean up."
+      ];
+    }
+    if (/datastore|tag discovery/i.test(readOnlyText)) {
+      return [
+        "Safety check: Cannot read a complete CA journal or KMS key list.",
+        "Safety check: Stops before taking the Lease or writing anything."
+      ];
+    }
+    return [
+      "No shared data changes: The patch only reads, checks, waits, signs, or rejects the request in this step."
+    ];
+  }
+
+  var actions = [];
+  function addAction(component, action) {
+    var existing = actions.find(function (item) {
+      return item.component === component;
+    });
+    if (existing) {
+      existing.items.push(action);
+      return;
+    }
+    actions.push({component: component, items: [action]});
+  }
+
+  if (hasChange(changes, "Server configuration")) {
+    addAction(
+      "Server settings",
+      "Checks the KeyManager name, cluster ID, KMS key identifier, and whether an existing CA journal is required before the server starts."
+    );
+  }
+
+  if (hasChange(changes, "Kubernetes Lease")) {
+    var primaryLeaseChange = hasChange(changes, "Kubernetes Lease", "primary[");
+    if (primaryLeaseChange && valueChangedTo(changes, "Kubernetes Lease", "].spec.holderIdentity", "")) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Releases the cluster lock so another server can use it."
+      );
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "If work may be unfinished, keeps the create token, current phase, and pending-key list so another server can continue it."
+      );
+    } else if (primaryLeaseChange && hasChange(changes, "Kubernetes Lease", "].spec.holderIdentity")) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Takes the cluster lock and saves which server owns it."
+      );
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Also saves a unique rotation token, the lock phase (such as acquired or mutating), the 30-second timeout, and the lock times."
+      );
+    } else if (primaryLeaseChange) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Updates the Lease only if its resourceVersion has not changed since this server read it."
+      );
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "A server that held the lock earlier cannot overwrite newer Lease data."
+      );
+    }
+    if (hasChange(changes, "Kubernetes Lease", "related[")) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Shows another cluster's Lease. That Lease is separate and cannot be used by this cluster."
+      );
+    }
+    var pendingChange = matchingChange(changes, "Kubernetes Lease", ANNOTATION.pendingCreates);
+    if (pendingChange) {
+      if (pendingChange.afterRaw) {
+        addAction(
+          "Cluster lock (Kubernetes Lease)",
+          "Before asking AWS to create a key, saves the key name and create token."
+        );
+        addAction(
+          "Cluster lock (Kubernetes Lease)",
+          "If the AWS reply is lost, another server can use this token to find the same key."
+        );
+      } else {
+        addAction(
+          "Cluster lock (Kubernetes Lease)",
+          "Removes the key from the pending list after it confirms that the key and CA record are saved."
+        );
+      }
+    }
+    if (hasChange(changes, "Kubernetes Lease", ANNOTATION.completionToken)) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Writes a new completion token. Other servers see the new token and reload."
+      );
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "The completion token tells servers to reload. It does not give a server ownership of the Lease."
+      );
+    }
+    var preparedChange = matchingChange(changes, "Kubernetes Lease", ANNOTATION.preparedAuthorities);
+    if (preparedChange) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        preparedChange.afterRaw
+          ? "Records the prepared CA ID. Each server waits 20 seconds after it first sees this value before it can activate that CA."
+          : "Removes the prepared-key marker because activation or recovery is finished."
+      );
+    }
+    if (hasChange(changes, "Kubernetes Lease", ANNOTATION.taintTombstones)) {
+      addAction(
+        "Cluster lock (Kubernetes Lease)",
+        "Records that this old public key must stay blocked. If a server later reloads older data, it still refuses this key."
+      );
+    }
+  }
+
+  if (hasChange(changes, "AWS KMS") || hasChange(changes, "AWS call counters")) {
+    if (numericIncrease(changes, "counters.createKey")) {
+      addAction(
+        "AWS KMS key plugin",
+        "Calls CreateKey once, after the create token is saved in the Lease."
+      );
+      addAction(
+        "AWS KMS key plugin",
+        "Checks that AWS returned a physical key ARN, the expected public key, and this cluster's tags."
+      );
+    }
+    if (hasChange(changes, "AWS KMS", "aliases[")) {
+      addAction(
+        "AWS KMS key plugin",
+        "Changes the KMS alias shown below so it points to the exact key ARN shown below."
+      );
+      addAction(
+        "AWS KMS key plugin",
+        "Signing uses the saved key ARN, so a later alias change cannot switch the signing key."
+      );
+    }
+    if (/alias|physical key|KMS inventory/i.test(currentStep.text) &&
+        !hasChange(changes, "AWS KMS", "aliases[")) {
+      addAction(
+        "AWS KMS key plugin",
+        "Reads the existing aliases and physical keys and checks them. It does not change them in this step."
+      );
+    }
+    if (hasChange(changes, "AWS KMS", ".tags[")) {
+      addAction(
+        "AWS KMS key plugin",
+        "Updates tags on the physical key. They show its cluster and logical key, the last report time, and whether it is being created or retired."
+      );
+    }
+    if (valueChangedTo(changes, "AWS KMS", ".state", "PendingDeletion") ||
+        numericIncrease(changes, "counters.scheduleDeletion")) {
+      addAction(
+        "AWS KMS key plugin",
+        "Checks the exact old key again, then asks AWS to delete it in seven days."
+      );
+      addAction(
+        "AWS KMS key plugin",
+        "KMS stops the key from signing now. An operator can cancel deletion during the seven-day window."
+      );
+    }
+  }
+
+  if (hasChange(changes, "CA journal")) {
+    var selectedJournal = matchingChange(changes, "CA journal", "journal.selectedId");
+    if (selectedJournal) {
+      addAction(
+        "CA journal",
+        selectedJournal.beforeRaw
+          ? "Finds the CA record whose public key matches the KMS key. If there is no clear match, it stops."
+          : "Creates the first CA journal and saves its database ID before the server starts signing."
+      );
+    }
+    if (hasChange(changes, "CA journal", "journal.rows[")) {
+      if (!selectedJournal || selectedJournal.beforeRaw) {
+        addAction(
+          "CA journal",
+          "Saves the CA status change before it changes the signer used by this server."
+        );
+      }
+      addAction(
+        "CA journal",
+        "The table shows the KMS ARN used for signing. The database stores the public key or certificate, not that ARN."
+      );
+    }
+    if (hasChange(changes, "CA journal", "activeX509AuthorityId")) {
+      addAction(
+        "CA journal",
+        "Changes the active X.509 CA ID so every server uses the same CA certificate as current."
+      );
+    }
+  }
+  if (!hasChange(changes, "CA journal") && /journal/i.test(currentStep.text)) {
+    addAction(
+      "CA journal",
+      "Reads and checks the existing CA journal. It does not change the journal in this step."
+    );
+  }
+
+  if (hasChange(changes, "Trust bundle and OIDC source")) {
+    var changesX509 = hasChange(changes, "Trust bundle and OIDC source", "X509 certificate|");
+    var changesJWT = hasChange(changes, "Trust bundle and OIDC source", "JWT JWK|");
+    addAction(
+      "Published certificates and JWKs",
+      "Changes the certificate or public key that clients use to verify credentials."
+    );
+    if (changesX509) {
+      addAction(
+        "Published certificates and JWKs",
+        "The SPIRE bundle and Agents receive the X.509 certificate change."
+      );
+    }
+    if (changesJWT) {
+      addAction(
+        "Published certificates and JWKs",
+        "OIDC publishes the JWK change after its next successful refresh."
+      );
+    }
+  }
+
+  if (hasChange(changes, "Replica process memory")) {
+    if (hasChange(changes, "Replica process memory", "Signer")) {
+      addAction(
+        "SPIRE server memory",
+        "Changes its signer only after the CA record, the certificate or JWK shared with clients, and the KMS public key all match."
+      );
+      addAction(
+        "SPIRE server memory",
+        "The signer uses the full physical key ARN."
+      );
+    }
+    if (hasChange(changes, "Replica process memory", "observedCompletion")) {
+      addAction(
+        "SPIRE server memory",
+        "Remembers the last completion token it saw after reloading. This value is only in memory."
+      );
+    }
+    if (hasChange(changes, "Replica process memory", ".ready")) {
+      var readinessChanges = changes.filter(function (change) {
+        return change.area === "Replica process memory" && change.field.indexOf(".ready") !== -1;
+      });
+      var allReady = readinessChanges.every(function (change) {
+        return change.afterRaw === true;
+      });
+      var allUnready = readinessChanges.every(function (change) {
+        return change.afterRaw === false;
+      });
+      addAction(
+        "SPIRE server memory",
+        allReady
+          ? "Becomes ready after loading valid CA and KMS key data and passing its health checks."
+          : allUnready
+            ? "Becomes unready because it could not load valid CA and KMS key data or a health check failed."
+            : "Updates each server's readiness after checking its loaded CA and KMS key data and health."
+      );
+    }
+    if (!hasChange(changes, "Replica process memory", "Signer") &&
+        !hasChange(changes, "Replica process memory", "observedCompletion") &&
+        !hasChange(changes, "Replica process memory", ".ready")) {
+      addAction(
+        "SPIRE server memory",
+        "Only its in-memory status changes. No shared data changes."
+      );
+    }
+  }
+
+  return actions;
+}
+
+function displayAreaName(area) {
+  var names = {
+    "Replica process memory": "SPIRE server memory",
+    "Kubernetes Lease": "Kubernetes Lease",
+    "CA journal": "CA journal",
+    "Trust bundle and OIDC source": "Published certificates and JWKs",
+    "AWS KMS": "AWS KMS",
+    "AWS call counters": "AWS calls",
+    "Server configuration": "Server settings"
+  };
+  return names[area] || area;
+}
+
+function renderChangeGroups(target, changes, idPrefix, headingName) {
+  target.replaceChildren();
+  headingName = headingName || "h5";
+  var grouped = {};
+  changes.forEach(function (change) {
+    if (!grouped[change.area]) {
+      grouped[change.area] = [];
+    }
+    grouped[change.area].push(change);
+  });
+  Object.keys(grouped).forEach(function (area, index) {
+    var group = element("div", "change-group");
+    var heading = element(headingName, "", displayAreaName(area));
+    heading.id = idPrefix + "-" + index;
+    group.appendChild(heading);
+    var tableWrap = element("div", "table-wrap");
+    var rows = grouped[area].map(function (change) {
+      return [
+        codeNode(change.field),
+        codeNode(change.before),
+        codeNode(change.after)
+      ];
+    });
+    renderTable(
+      tableWrap,
+      ["Field", "Before this step", "After this step"],
+      rows,
+      "step-changes-table",
+      heading.id
+    );
+    group.appendChild(tableWrap);
+    target.appendChild(group);
+  });
+}
+
+function transientOperationsForStep(currentStep, netChanges) {
+  return currentStep.operations.map(function (operation) {
+    var changes = collectStepChanges(operation.beforeState, operation.state).filter(function (change) {
+      return !netChanges.some(function (netChange) {
+        return netChange.area === change.area &&
+          netChange.field === change.field &&
+          sameData(netChange.afterRaw, change.afterRaw);
+      });
+    });
+    return {label: operation.label, changes: changes};
+  }).filter(function (operation) {
+    return operation.changes.length > 0;
+  });
+}
+
+function normalizeActionGroups(rawActions) {
+  var groups = [];
+  rawActions.forEach(function (rawAction) {
+    var component;
+    var items;
+    if (typeof rawAction === "string") {
+      var separator = rawAction.indexOf(":");
+      component = separator === -1 ? "What the patch does" : rawAction.slice(0, separator);
+      items = [separator === -1 ? rawAction : rawAction.slice(separator + 1).trim()];
+    } else {
+      component = rawAction.component;
+      items = rawAction.items;
+    }
+    var group = groups.find(function (item) {
+      return item.component === component;
+    });
+    if (!group) {
+      group = {component: component, items: []};
+      groups.push(group);
+    }
+    items.forEach(function (item) {
+      group.items.push(item);
+    });
+  });
+  return groups;
+}
+
+function renderActionGroups(target, rawActions) {
+  target.replaceChildren();
+  normalizeActionGroups(rawActions).forEach(function (actionGroup) {
+    var group = element("div", "patch-action");
+    group.appendChild(element("h4", "", actionGroup.component));
+    var list = element("ul");
+    actionGroup.items.forEach(function (item) {
+      list.appendChild(element("li", "", item));
+    });
+    group.appendChild(list);
+    target.appendChild(group);
+  });
+}
+
+function renderStepDetails(currentStep) {
+  var changes = collectStepChanges(currentStep.beforeState, currentStep.state);
+  var actionsTarget = document.getElementById("patchActions");
+  renderActionGroups(actionsTarget, patchActionsForStep(currentStep, changes));
+
+  var summary = changes.length === 0
+    ? "No field values changed"
+    : changes.length === 1
+      ? "1 field value changed"
+      : changes.length + " field values changed";
+  document.getElementById("stepChangeSummary").textContent =
+    summary + ". Step source: " + currentStep.source + ".";
+
+  var changesTarget = document.getElementById("stepChanges");
+  if (!changes.length) {
+    changesTarget.replaceChildren(
+      element("p", "empty", "This step did not change saved data or SPIRE server memory.")
+    );
+  } else {
+    renderChangeGroups(changesTarget, changes, "step-change");
+  }
+
+  var transientOperations = transientOperationsForStep(currentStep, changes);
+  var operationsSection = document.getElementById("stepOperationsSection");
+  var operationsTarget = document.getElementById("stepOperations");
+  operationsTarget.replaceChildren();
+  operationsSection.hidden = transientOperations.length === 0;
+  transientOperations.forEach(function (operation, index) {
+    var operationGroup = element("div", "change-group");
+    var heading = element("h5", "", (index + 1) + ". " + operation.label);
+    heading.id = "step-operation-" + index;
+    operationGroup.appendChild(heading);
+    var groupTarget = element("div");
+    renderChangeGroups(groupTarget, operation.changes, heading.id + "-area", "h6");
+    operationGroup.appendChild(groupTarget);
+    operationsTarget.appendChild(operationGroup);
+  });
+}
+
+function renderScope(state) {
+  var target = document.getElementById("scope");
+  target.replaceChildren();
+  [
+    ["KeyManager", state.scope.plugin],
+    ["Trust domain", state.scope.trustDomain],
+    ["Cluster ID", state.scope.clusterId],
+    ["KMS key identifier", state.scope.keyIdentifier],
+    ["AWS account", state.scope.account],
+    ["AWS region", state.scope.region],
+    ["Must find existing CA journal", state.scope.requireExistingJournal],
+    ["Can create Lease", state.scope.allowLeaseCreation],
+    ["Keys created", String(state.counters.createKey)],
+    ["Deletion requests", String(state.counters.scheduleDeletion)]
+  ].forEach(function (entry) {
+    var item = element("div", "scope-item");
+    item.appendChild(element("div", "scope-label", entry[0]));
+    var value = element("div", "scope-value");
+    value.appendChild(codeNode(entry[1]));
+    item.appendChild(value);
+    target.appendChild(item);
+  });
+}
+
+function renderReplicas(state) {
+  var rows = state.replicas.map(function (replica) {
+    return [
+      replica.name,
+      codeNode(replica.bootId),
+      stateNode(replica.ready ? "Ready" : "Not ready"),
+      replica.leaseHolder ? "Yes" : "No",
+      routeNode(replica.x509),
+      routeNode(replica.jwt),
+      codeNode(replica.observedCompletion),
+      replica.status
+    ];
+  });
+  renderTable(
+    document.getElementById("replicas"),
+    ["Pod", "Boot identity", "Readiness", "Lease owner", "X.509 signer", "JWT signer", "Observed completion", "Status"],
+    rows
+  );
+}
+
+function renderLease(state) {
+  var rows = [];
+  function appendLease(lease, prefix) {
+    function field(name) {
+      return prefix ? prefix + "." + name : name;
+    }
+    rows.push(
+      [field("Object exists"), lease.exists ? "Yes" : "No"],
+      [field("apiVersion"), codeNode(lease.apiVersion)],
+      [field("kind"), codeNode(lease.kind)],
+      [field("metadata.namespace"), codeNode(lease.namespace)],
+      [field("metadata.name"), codeNode(lease.name)],
+      [field("metadata.resourceVersion"), codeNode(lease.resourceVersion)],
+      [field("spec.holderIdentity"), codeNode(lease.holderIdentity)],
+      [field("spec.leaseDurationSeconds"), codeNode(lease.leaseDurationSeconds)],
+      [field("spec.acquireTime"), codeNode(lease.acquireTime)],
+      [field("spec.renewTime"), codeNode(lease.renewTime)],
+      [field("spec.leaseTransitions"), codeNode(String(lease.leaseTransitions))]
+    );
+    Object.keys(ANNOTATION).forEach(function (name) {
+      var annotationName = ANNOTATION[name];
+      rows.push([
+        field("metadata.annotations[" + annotationName + "]"),
+        codeNode(lease.annotations[annotationName])
+      ]);
+    });
+  }
+  appendLease(state.lease, "");
+  state.relatedLeases.forEach(function (lease) {
+    appendLease(lease, "related[" + lease.scope + "]");
+  });
+  renderTable(
+    document.getElementById("lease"),
+    ["Field", "Value"],
+    rows,
+    "field-table"
+  );
+}
+
+function renderJournal(state) {
+  var rows = state.journal.rows.map(function (item) {
+    return [
+      codeNode(item.journalId),
+      item.type,
+      item.slot,
+      codeNode(item.authorityId),
+      stateNode(item.status),
+      codeNode(item.issuedAt),
+      codeNode(item.notAfter),
+      codeNode(item.keyArn)
+    ];
+  });
+  var target = document.getElementById("journal");
+  target.replaceChildren();
+  var summary = element("div", "section-note");
+  summary.appendChild(document.createTextNode("CA journal database ID: "));
+  summary.appendChild(codeNode(state.journal.selectedId));
+  summary.appendChild(document.createTextNode(" | Current X.509 CA ID (activeX509AuthorityId): "));
+  summary.appendChild(codeNode(state.journal.activeX509AuthorityId));
+  target.appendChild(summary);
+  var tableTarget = element("div", "table-wrap");
+  target.appendChild(tableTarget);
+  renderTable(
+    tableTarget,
+    ["Journal ID", "Type", "Slot", "Authority ID", "Status", "Issued at", "Not after", "Resolved physical key ARN"],
+    rows
+  );
+}
+
+function renderTrust(state) {
+  var rows = state.trust.map(function (item) {
+    return [
+      item.kind,
+      codeNode(item.authorityId),
+      stateNode(item.state),
+      item.pruneWhen
+    ];
+  });
+  renderTable(
+    document.getElementById("trust"),
+    ["Material", "Authority ID", "Publication state", "Removal rule"],
+    rows
+  );
+}
+
+function renderKeys(state) {
+  var rows = state.keys.map(function (item) {
+    return [
+      item.name,
+      item.logicalKey,
+      codeNode(item.arn),
+      codeNode(item.keySpec),
+      codeNode(item.keyUsage),
+      stateNode(item.state),
+      codeNode(item.deletionDate),
+      codeNode(item.fingerprint),
+      tagsNode(item.tags),
+      item.note || "None"
+    ];
+  });
+  renderTable(
+    document.getElementById("keys"),
+    ["Example key", "Logical key", "Physical key ARN", "KeySpec", "KeyUsage", "KMS state", "Deletion date", "Public-key fingerprint", "Tags", "Notes"],
+    rows
+  );
+
+  var aliasRows = state.aliases.map(function (item) {
+    return [
+      codeNode(item.alias),
+      codeNode(item.targetArn)
+    ];
+  });
+  renderTable(
+    document.getElementById("aliases"),
+    ["Alias", "Exact target ARN"],
+    aliasRows
+  );
+}
+
+function render() {
+  var scenario = SCENARIOS[scenarioIndex];
+  var currentStep = scenario.steps[stepIndex];
+  var state = currentStep.state;
+
+  document.getElementById("scenarioTitle").textContent = scenario.title;
+  document.getElementById("scenarioSummary").textContent = scenario.summary;
+  document.getElementById("stepTitle").textContent =
+    "Step " + (stepIndex + 1) + " of " + scenario.steps.length + ": " + currentStep.title;
+  document.getElementById("stepText").textContent = currentStep.text;
+  document.getElementById("stepOutcome").textContent = "Result: " + currentStep.outcome;
+  document.getElementById("stepBox").className = "step-box " + currentStep.tone;
+
+  renderStepDetails(currentStep);
+  renderScope(state);
+  renderReplicas(state);
+  renderLease(state);
+  renderJournal(state);
+  renderTrust(state);
+  renderKeys(state);
+
+  scenarioSelect.value = String(scenarioIndex);
+  stepSelect.value = String(stepIndex);
+  previousButton.disabled = stepIndex === 0;
+  nextButton.disabled = stepIndex === scenario.steps.length - 1;
+}
+
+function buildScenarioSelect() {
+  scenarioSelect.replaceChildren();
+  var groups = [];
+  SCENARIOS.forEach(function (scenario) {
+    if (groups.indexOf(scenario.group) === -1) {
+      groups.push(scenario.group);
+    }
+  });
+  groups.forEach(function (group) {
+    var optgroup = element("optgroup");
+    optgroup.label = group;
+    SCENARIOS.forEach(function (scenario, index) {
+      if (scenario.group !== group) {
+        return;
+      }
+      var option = element("option", "", scenario.title);
+      option.value = String(index);
+      optgroup.appendChild(option);
+    });
+    scenarioSelect.appendChild(optgroup);
+  });
+}
+
+function buildStepSelect() {
+  stepSelect.replaceChildren();
+  SCENARIOS[scenarioIndex].steps.forEach(function (currentStep, index) {
+    var option = element("option", "", (index + 1) + ". " + currentStep.title);
+    option.value = String(index);
+    stepSelect.appendChild(option);
+  });
+}
+
+scenarioSelect.addEventListener("change", function () {
+  scenarioIndex = Number(scenarioSelect.value);
+  stepIndex = 0;
+  buildStepSelect();
+  render();
+});
+
+stepSelect.addEventListener("change", function () {
+  stepIndex = Number(stepSelect.value);
+  render();
+});
+
+previousButton.addEventListener("click", function () {
+  if (stepIndex > 0) {
+    stepIndex -= 1;
+    render();
+  }
+});
+
+nextButton.addEventListener("click", function () {
+  if (stepIndex < SCENARIOS[scenarioIndex].steps.length - 1) {
+    stepIndex += 1;
+    render();
+  }
+});
+
+buildScenarioSelect();
+buildStepSelect();
+render();
+</script>
+</body>
+</html>
