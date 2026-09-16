@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AWS KMS cluster rotation design and scenarios</title>
+<meta name="description" content="A plain-English, step-by-step guide to shared SPIRE signing keys, rotation recovery, nested clusters, and outages.">
+<title>One Key Per SPIRE HA Cluster</title>
 <style>
 :root {
   color-scheme: light;
@@ -734,1335 +735,103 @@ tr:last-child td {
     width: 170px;
   }
 }
+
+/* Reading layer: keep the detailed records, but lead with the story. */
+body {font-size: 17px;line-height:1.65;}
+.page {max-width:1280px;padding:32px 24px 64px;}
+h1 {font-size:clamp(2rem,4vw,3.15rem);letter-spacing:-.04em;line-height:1.12;margin:6px 0 18px;}
+.eyebrow {font-size:14px;letter-spacing:.1em;font-weight:750;color:var(--accent);}
+.intro {max-width:820px;}
+.note {font-size:14px;border:0;padding:0;background:none;color:var(--secondary);}
+.jump-nav {padding:0;border:0;background:none;gap:8px;margin:24px 0;}
+.jump-nav a {font-size:14px;border-radius:8px;background:white;padding:9px 12px;}
+.controls {border-radius:12px;gap:12px;}
+button,select {min-height:44px;border-radius:8px;}
+.scenario-head {margin-top:20px;}
+.step-box {border-radius:12px;padding:22px;margin-top:14px;}
+.step-title {font-size:22px;line-height:1.35;}
+.step-text,.outcome {font-size:17px;max-width:90ch;}
+.records-panel {margin:22px 0;border:1px solid var(--border);border-radius:12px;background:var(--surface);}
+.records-panel>summary,.guide-section>summary {font-size:16px;font-weight:700;cursor:pointer;padding:16px;}
+.records-panel>.section,.records-panel>.two-column {margin:14px;}
+#design-notes {margin-top:28px;padding:0;border-radius:12px;}
+#design-notes>.guide-section {border-width:1px 0 0;margin:0;padding:22px;}
+.reference-table,.field-table,table {font-size:14px;}
+.small-text,.section-note,.scope-label {font-size:14px;}
+@media(max-width:650px){.page{padding:20px 14px 40px;}h1{font-size:2rem}.controls{display:grid;grid-template-columns:1fr 1fr}.field{grid-column:1/-1}.two-column{grid-template-columns:1fr}.step-box{padding:16px}.guide-grid,.architecture-flow{grid-template-columns:1fr}.jump-nav a{padding:8px}.records-panel>.section{margin:8px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* The overview reads the same example state as the detailed tables. */
+.playback {display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 22px;}
+.playback p {flex:1 1 260px;font-size:14px;color:var(--secondary);}
+#playButton {background:var(--accent);color:white;border-color:var(--accent);min-width:112px;}
+#stepProgress {display:block;width:100%;height:7px;accent-color:var(--accent);margin:0 0 18px;}
+.flow-board {padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:14px;}
+.flow-heading {display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap;}
+.flow-heading p,.flow-note {font-size:14px;color:var(--secondary);}
+.flow-status {display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0;}
+.status-line {padding:12px 14px;background:var(--surface-alt);border-radius:8px;}
+.status-line span {display:block;font-size:14px;color:var(--secondary);}
+.status-line strong {display:block;font-size:16px;}
+.flow-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.flow-card {min-width:0;padding:18px;border:2px solid var(--border);border-radius:12px;background:var(--surface);}
+.flow-card.focus {border-color:var(--accent);background:#f4f8fe;animation:step-arrives .6s ease-out;}
+.flow-card h4 {display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:18px;margin:0 0 12px;}
+.focus-label {font-size:14px;font-weight:500;color:var(--accent);}
+.flow-card p {font-size:16px;}
+.flow-card .flow-detail {font-size:14px;color:var(--secondary);margin-top:8px;}
+.server-chip,.key-chip {display:flex;gap:8px;align-items:center;padding:9px 10px;margin:6px 0;border:1px solid var(--border);border-radius:7px;font-size:14px;background:white;flex-wrap:wrap;}
+.server-chip>strong {flex:1;min-width:110px;}
+.server-chip.not-ready {background:var(--warn-soft);}
+.key-chip.pending {background:var(--surface-alt);color:var(--secondary);}
+.key-chip .key-shape {width:14px;height:14px;border:3px solid currentColor;border-radius:50%;position:relative;flex:none;margin-right:6px;}
+.key-shape::after {content:"";position:absolute;width:8px;height:3px;background:currentColor;left:8px;top:3px;}
+.quota-box {margin-top:18px;padding:16px;border:1px solid var(--border);border-radius:10px;}
+.quota-slots {display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin:12px 0;}
+.quota-slot {height:22px;border:1px solid var(--border);border-radius:4px;background:var(--surface-alt);}
+.quota-slot.used {border-color:var(--warn);background:var(--warn-soft);}
+.quota-slot.used::after {content:"×";display:block;color:var(--warn);text-align:center;line-height:19px;font-size:19px;}
+.quota-box p {font-size:14px;color:var(--secondary);}
+.nested-map {margin:18px 0;text-align:center;}
+.nested-root,.nested-children>div {padding:18px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);}
+.nested-root {max-width:470px;margin:0 auto;}
+.nested-map strong,.nested-map span {display:block;}
+.nested-map span {font-size:14px;color:var(--secondary);margin-top:6px;}
+.nested-link {padding:14px;font-size:14px;color:var(--accent);}
+.nested-children {display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.nested-map .focus {border:2px solid var(--accent);animation:step-arrives .6s ease-out;background:var(--accent-soft);}
+.reading-steps li {padding-left:5px;margin:12px 0!important;}
+.plain-glossary dt {font-weight:700;margin:12px 0 2px;}
+.plain-glossary dd {margin:0;color:var(--secondary);}
+.guide-section>p,.guide-section>details>p {max-width:85ch;}
+.guide-section p+p {margin-top:12px;}
+.reference-table {font-size:16px;}
+.reference-table code {overflow-wrap:anywhere;}
+.reference-table td,.reference-table th {padding:14px;vertical-align:top;}
+.step-text,.outcome {max-width:85ch;}
+.technical-story {margin:0 0 18px;padding:14px;background:var(--surface-alt);border-radius:8px;}
+.technical-story p {margin:6px 0;}
+.guide-card h3 {font-size:18px;}
+.guide-card p {font-size:16px;}
+summary:focus-visible,a:focus-visible,button:focus-visible,select:focus-visible {outline:3px solid var(--accent);outline-offset:3px;}
+@keyframes step-arrives {from{transform:translateY(6px);box-shadow:0 0 0 4px var(--accent-soft)}to{transform:translateY(0);box-shadow:0 0 0 0 transparent}}
+@media(max-width:650px){.flow-board{padding:14px}.flow-grid,.flow-status,.nested-children{grid-template-columns:1fr}.flow-card{padding:14px}.flow-heading{gap:4px}.controls .field{min-width:0}.controls select{width:100%;max-width:100%}.playback p{flex-basis:100%}.reference-table{min-width:560px}.quota-slots{gap:4px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important;}}
+
 </style>
 </head>
 <body>
 <main class="page">
   <header class="page-header">
-    <h1>AWS KMS cluster rotation: design and scenarios</h1>
-    <p class="intro">
-      This page explains how <code>aws_kms_cluster</code> lets all SPIRE Server
-      pods use the same AWS KMS keys. It covers changes in Kubernetes, the SPIRE
-      database, AWS KMS, published public keys, and each server.
-    </p>
-    <p class="note">
-      The account, ARNs, UUIDs, timestamps, and authority IDs below are complete
-      example values. They are not values from a production environment.
-    </p>
+    <p class="eyebrow">SPIRE · AWS KMS CLUSTER</p><h1>One Key Per SPIRE HA Cluster</h1>
+    <p class="intro">All servers in a cluster use the same signing keys. One server at a time handles a rotation. Follow the steps to see what changes, what keeps working, and what happens after a failure.</p>
+    <p class="note">This is a teaching example. The keys, IDs, and times are made up; this page does not connect to AWS. Checked against the working code on 15 September 2026.</p>
   </header>
 
-  <nav class="jump-nav" aria-label="Page sections">
-    <a href="#design-overview">Design overview</a>
-    <a href="#lease-design">Lease fields</a>
-    <a href="#annotations">Lease annotations</a>
-    <a href="#timers">Timers</a>
-    <a href="#operation-flow">Operation flow</a>
-    <a href="#recovery">Failure recovery</a>
-    <a href="#migration">Migration and rollback</a>
-    <a href="#scenarios">Scenarios</a>
-  </nav>
+  <nav class="jump-nav" aria-label="Page sections"><a href="#scenarios">Watch the steps</a><a href="#design-overview">Understand the basics</a><a href="#recovery">When something fails</a><a href="#timers">Timing and limits</a><a href="#migration">Moving an existing cluster</a></nav>
 
-  <section class="guide-section" id="design-overview">
-    <h2>Design overview</h2>
-    <p class="guide-lead">
-      All SPIRE Server pods can issue identity credentials at the same time.
-      The Kubernetes Lease is only a short-lived lock for changing shared keys
-      and public trust. It does not choose one server to handle all signing.
-    </p>
-
-    <div class="plain-callout">
-      <h3>How it works</h3>
-      <ol>
-        <li>
-          Stock <code>aws_kms</code> uses a server-specific identifier, so each
-          pod can have its own KMS keys and CA journal.
-        </li>
-        <li>
-          The custom <code>aws_kms_cluster</code> plugin uses one fixed cluster
-          identifier. Every server calculates the same KMS aliases for the
-          same logical signing slots.
-        </li>
-        <li>
-          A Kubernetes Lease lets only one server at a time change shared key
-          data. This includes creating a key, changing the CA journal,
-          publishing a public key, activating a signer, blocking an old public
-          key, or scheduling an old KMS key for deletion.
-        </li>
-        <li>
-          The Lease also records what the owner was doing. If the owner stops or
-          a reply is lost, another server can check what really happened and
-          continue safely.
-        </li>
-        <li>
-          After a successful change, the owner writes a new completion UUID.
-          Other servers see that UUID, reload the shared CA and KMS data,
-          check that it matches, and start using the same signer without a
-          restart.
-        </li>
-        <li>
-          Signing uses the full ARN of the physical KMS key. It never signs
-          through an alias. Moving an alias therefore cannot silently change
-          the key used by a server that has not reloaded yet.
-        </li>
-      </ol>
-    </div>
-
-    <h3>What "one key per cluster" means</h3>
-    <p>
-      It means one current physical KMS key for each named SPIRE key slot. Every
-      server shares that key. It does not mean one KMS key for the whole
-      cluster. SPIRE still has A and B slots for each kind of signer:
-    </p>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Authority type</th>
-            <th>Logical key slots</th>
-            <th>Public identifier</th>
-            <th>What can coexist</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>X.509 CA</td>
-            <td><code>x509-CA-A</code>, <code>x509-CA-B</code></td>
-            <td>Certificate subject key ID</td>
-            <td>The current, next, old, and waiting-for-deletion keys</td>
-          </tr>
-          <tr>
-            <td>JWT signer</td>
-            <td><code>JWT-Signer-A</code>, <code>JWT-Signer-B</code></td>
-            <td>JWK <code>kid</code></td>
-            <td>The current, next, old, and waiting-for-deletion keys</td>
-          </tr>
-          <tr>
-            <td>WIT signer</td>
-            <td><code>WIT-Signer-A</code>, <code>WIT-Signer-B</code></td>
-            <td>WIT public-key ID</td>
-            <td>The current, next, old, and waiting-for-deletion keys</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="small-text">
-      If an authority type is disabled, its slots do not create KMS keys. The
-      simulator below enables X.509 and JWT and disables WIT.
-    </p>
-
-    <h3>Words used on this page</h3>
-    <div class="guide-grid">
-      <div class="guide-card">
-        <h4>Authority</h4>
-        <p>An X.509 CA, JWT signer, or WIT signer. It has a public key and uses a private KMS key to sign.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Physical key</h4>
-        <p>The real AWS KMS key. Its full ARN ends in <code>key/UUID</code>.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Logical slot</h4>
-        <p>A stable SPIRE name such as <code>x509-CA-A</code>. A later rotation can put a new physical key in the same slot.</p>
-      </div>
-      <div class="guide-card">
-        <h4>CA journal</h4>
-        <p>The shared database record that says which authorities are ACTIVE, PREPARED, or OLD.</p>
-      </div>
-      <div class="guide-card">
-        <h4>PREPARED</h4>
-        <p>The next key is saved and its public key is published, but SPIRE is not signing with it yet.</p>
-      </div>
-      <div class="guide-card">
-        <h4>ACTIVE and OLD</h4>
-        <p>ACTIVE is signing now. OLD no longer signs new credentials, but its public key stays available while old credentials may still need it.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Lease</h4>
-        <p>A small Kubernetes object used as the shared lock and as a record of unfinished work.</p>
-      </div>
-      <div class="guide-card">
-        <h4>ARN and alias</h4>
-        <p>An ARN names one exact AWS resource. A KMS alias is a movable name that points to a key ARN.</p>
-      </div>
-      <div class="guide-card">
-        <h4>UUID or token</h4>
-        <p>A random ID. The Lease uses different UUIDs for one lock attempt, one key-create attempt, and one finished change.</p>
-      </div>
-      <div class="guide-card">
-        <h4>SVID</h4>
-        <p>An identity credential issued by SPIRE. It can be an X.509 certificate or a JWT.</p>
-      </div>
-      <div class="guide-card">
-        <h4>JWK and JWKS</h4>
-        <p>A JWK is one public JWT signing key. A JWKS is a list of JWKs published for JWT verification.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Public-key fingerprint</h4>
-        <p>A SHA-256 hash of a public key. SPIRE uses it to prove that records refer to the same physical key.</p>
-      </div>
-    </div>
-
-    <div class="architecture-flow" aria-label="Cluster rotation data flow">
-      <div class="flow-node">
-        <strong>1. Request</strong>
-        <span>A 10-second scheduled pass, a CLI call, or an upstream trust event asks for a change.</span>
-      </div>
-      <div class="flow-node">
-        <strong>2. Observe</strong>
-        <span>The server reads the Lease and reloads any completion it has not seen.</span>
-      </div>
-      <div class="flow-node">
-        <strong>3. Acquire</strong>
-        <span>Only one update based on the latest Lease version can win. The winner records its UUID.</span>
-      </div>
-      <div class="flow-node">
-        <strong>4. Change</strong>
-        <span>The owner changes KMS, the CA journal, and public keys in a safe order.</span>
-      </div>
-      <div class="flow-node">
-        <strong>5. Complete</strong>
-        <span>One Lease update publishes a completion UUID and releases ownership.</span>
-      </div>
-      <div class="flow-node">
-        <strong>6. Reload</strong>
-        <span>Every server reloads, checks the values, and starts signing with the same physical key ARN.</span>
-      </div>
-    </div>
-
-    <h3>What does each system control?</h3>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>What it decides</th>
-            <th>What it does not decide</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Kubernetes Lease</td>
-            <td>Which server may change shared data now, whether old work may be unfinished, when a checked change finished, and which old keys still need deletion.</td>
-            <td>It does not contain private keys, CA certificates, JWKs, or the complete journal.</td>
-          </tr>
-          <tr>
-            <td>CA journal in the SPIRE datastore</td>
-            <td>Which authorities are ACTIVE, PREPARED, or OLD, plus their public keys, IDs, slots, start times, and expiry times.</td>
-            <td>It does not store a KMS ARN. SPIRE matches journal public material to a validated KMS key.</td>
-          </tr>
-          <tr>
-            <td>AWS KMS physical key and tags</td>
-            <td>The private signing key, its fixed physical ARN, which cluster owns it, its logical slot, the create attempt, and which key it replaced.</td>
-            <td>A physical key existing in KMS does not by itself mean SPIRE published or activated it.</td>
-          </tr>
-          <tr>
-            <td>AWS KMS alias</td>
-            <td>Which physical KMS key is the agreed key for one A or B slot. The alias also gives SPIRE a stable name for finding that key.</td>
-            <td>SPIRE does not sign through the alias. An alias alone is not enough proof to delete an old key.</td>
-          </tr>
-          <tr>
-            <td>SPIRE bundle and OIDC JWKS</td>
-            <td>The public certificates and JWKs that consumers use to verify credentials.</td>
-            <td>They do not choose the current private signer or prove Lease ownership.</td>
-          </tr>
-          <tr>
-            <td>One server's memory</td>
-            <td>The ACTIVE signer that this process is using, including the full physical key ARN.</td>
-            <td>Memory is not the saved record. SPIRE changes it only after reloading and checking the shared data.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Safety rules</h3>
-    <div class="guide-grid">
-      <div class="guide-card">
-        <h4>One writer</h4>
-        <p>Only the exact Lease holder and acquisition UUID may update shared rotation state.</p>
-      </div>
-      <div class="guide-card">
-        <h4>One cluster name</h4>
-        <p>The Lease cluster ID and KMS <code>key_identifier_value</code> must match exactly on every server.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Save before use</h4>
-        <p>SPIRE saves and checks the CA journal before this process starts using a new signer.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Sign with one exact key</h4>
-        <p>Each signer names one physical KMS ARN and checks its public-key hash, key type, trust domain, cluster, and plugin process.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Recovery before new work</h4>
-        <p>A new owner checks and finishes old work before it starts a different change.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Stop when unsure</h4>
-        <p>If required proof is missing, broken, belongs to another cluster, or disagrees, SPIRE stops instead of guessing.</p>
-      </div>
-    </div>
-
-    <details class="reference">
-      <summary>Why this is a separate built-in plugin</summary>
-      <div class="details-body">
-        <p>
-          The stock <code>aws_kms</code> plugin is left unchanged. Selecting
-          <code>aws_kms_cluster</code> by name makes cluster behavior explicit;
-          there is no runtime mode switch that a later configuration reload can
-          accidentally change.
-        </p>
-        <ul>
-          <li>The server rejects <code>aws_kms_cluster</code> without <code>ca_rotation_lock</code>, and rejects the lock without that plugin.</li>
-          <li>Exactly one enabled KeyManager is allowed for coordinated rotation.</li>
-          <li>The cluster plugin must be built in and use inline, non-dynamic configuration.</li>
-          <li><code>key_identifier_file</code> is rejected because a different value on each pod would make different sets of KMS keys.</li>
-          <li>Tag-based discovery is required so a successor can find an unaliased or ambiguously created physical key.</li>
-          <li>The new operations travel through the existing KeyManager RPC in a versioned message. The patch does not change the plugin SDK protobuf, which makes future SPIRE upgrades easier.</li>
-        </ul>
-        <p>
-          The CA manager asks the plugin to find or create a key, resolve one
-          exact ARN, refresh tags, list keys that may match the journal, check
-          an old key before deletion, and finish deletion. Only
-          <code>aws_kms_cluster</code> accepts these requests. A plain key-create
-          request is rejected because it would not include the CA history and
-          create-attempt UUID needed after a failure.
-        </p>
-      </div>
-    </details>
-  </section>
-
-  <section class="guide-section" id="lease-design">
-    <h2>The Kubernetes Lease</h2>
-    <p class="guide-lead">
-      The Lease is a short-lived permit to change shared data. It also stores a
-      small amount of information about unfinished work. It is not the full CA
-      history. Normal SVID signing does not acquire or read it.
-    </p>
-
-    <h3>How the Lease is selected and checked at startup</h3>
-    <ul>
-      <li>
-        The namespace comes from <code>ca_rotation_lock.namespace</code>, or from
-        the pod service-account namespace when that setting is empty.
-      </li>
-      <li>
-        The name comes from <code>lease_name</code>. If omitted, SPIRE uses
-        <code>spire-server-ca-rotation-</code> plus the first 12 hexadecimal
-        characters of SHA-256 over <code>trust-domain + NUL + cluster-id</code>.
-      </li>
-      <li>
-        Production should pre-create the Lease, set
-        <code>allow_lease_creation = false</code>, and grant the server service
-        account <code>get</code> and <code>update</code> on that exact object.
-      </li>
-      <li>
-        Startup reads the Lease, checks every field used by this patch, and asks
-        Kubernetes to test an update without saving it. A missing Lease, broken
-        annotation, or missing permission stops startup before key changes can
-        begin.
-      </li>
-      <li>
-        <code>require_existing_journal = true</code> makes an empty journal a
-        startup error. It is required when adopting an existing per-pod setup
-        and should remain enabled afterward.
-      </li>
-    </ul>
-
-    <details class="reference">
-      <summary>Minimal cluster configuration example</summary>
-      <div class="details-body">
-<pre><code>server {
-    trust_domain = "example.org"
-
-    experimental {
-        ca_rotation_lock {
-            cluster_id              = "prod-cluster"
-            namespace               = "spire"
-            lease_name              = "spire-server-ca-rotation-prod"
-            allow_lease_creation    = false
-            require_existing_journal = true
-        }
-    }
-}
-
-plugins {
-    KeyManager "aws_kms_cluster" {
-        plugin_data {
-            region                         = "us-west-2"
-            key_identifier_value           = "prod-cluster"
-            enable_tag_based_key_discovery = true
-        }
-    }
-}</code></pre>
-        <p>
-          Use <code>require_existing_journal = false</code> only for a genuinely
-          new cluster with no CA journal. The <code>cluster_id</code> and
-          <code>key_identifier_value</code> must be identical. Production should
-          pre-create the named Lease, keep
-          <code>allow_lease_creation = false</code>, and grant only
-          <code>get</code> and <code>update</code> on that Lease.
-        </p>
-      </div>
-    </details>
-
-    <h3>Standard Lease fields</h3>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Field</th>
-            <th>Example</th>
-            <th>How the patch uses it</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>metadata.resourceVersion</code></td>
-            <td><code>12018</code></td>
-            <td>This prevents two writers. SPIRE reads the Lease, changes that copy, and sends back the same version number. If another writer changed it first, Kubernetes rejects the old copy. SPIRE reads again and retries no more than two times after the first try.</td>
-          </tr>
-          <tr>
-            <td><code>spec.holderIdentity</code></td>
-            <td><code>spire-server-1_b3a764c8-305a-4de0-82f7-253d90e2b4ae</code></td>
-            <td>The pod name plus a random UUIDv4 made when that SPIRE Server process starts. A restart gets a new value. Empty means that no server owns the Lease.</td>
-          </tr>
-          <tr>
-            <td><code>spec.leaseDurationSeconds</code></td>
-            <td><code>30</code></td>
-            <td>Set to 30 when a server takes the Lease. Readers wait at least 30 seconds and also honor a larger stored value. A smaller value cannot make takeover happen sooner.</td>
-          </tr>
-          <tr>
-            <td><code>spec.acquireTime</code></td>
-            <td><code>2026-08-21T07:10:40Z</code></td>
-            <td>Set when an owner acquires. It is useful for inspection, but it is not trusted to decide expiry.</td>
-          </tr>
-          <tr>
-            <td><code>spec.renewTime</code></td>
-            <td><code>2026-08-21T07:10:50Z</code></td>
-            <td>Set when a server takes the Lease, again just before it changes remote data, and every 10 seconds while it works. Another server checks whether this value keeps changing. It does not compare the timestamp with its own clock.</td>
-          </tr>
-          <tr>
-            <td><code>spec.leaseTransitions</code></td>
-            <td><code>12</code></td>
-            <td>Increases when a different server-process ID takes the Lease. It helps people inspect history, but it does not prove current ownership.</td>
-          </tr>
-          <tr>
-            <td><code>metadata.annotations</code></td>
-            <td>Seven custom keys described below</td>
-            <td>Small records about the current attempt, completed work, prepared authorities, old keys waiting for deletion, and public keys that must stay blocked. SPIRE keeps unrelated annotations unchanged.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="small-text">
-      Kubernetes also defines fields such as <code>strategy</code> and
-      <code>preferredHolder</code>. This patch does not use them. Do not use the
-      same Lease for another leader-election system.
-    </p>
-
-    <h3>Why takeover does not compare clocks</h3>
-    <ol class="sequence">
-      <li>
-        <strong>A server reads the Lease.</strong>
-        It records three values: owner ID, acquisition UUID, and renew time. It
-        also records when this process first saw that exact set of values.
-      </li>
-      <li>
-        <strong>Any change restarts the local timer.</strong>
-        A renewal, a new token, or a new holder proves that the observed record
-        is still moving.
-      </li>
-      <li>
-        <strong>All three values must stay unchanged for a full Lease duration.</strong>
-        A non-empty holder is not eligible for takeover until this process has
-        observed no change for at least 30 seconds.
-      </li>
-      <li>
-        <strong>Kubernetes still decides whether takeover wins.</strong>
-        If the old owner renewed or another server acquired between the read
-        and update, the version number no longer matches. Kubernetes rejects
-        the takeover.
-      </li>
-    </ol>
-    <p>
-      This stays safe even when pod clocks differ. Takeover is not
-      exactly 30 seconds after a crash. The first observer may discover the
-      unchanged tuple on its next 10-second pass, and only then starts its local
-      30-second timer.
-    </p>
-  </section>
-
-  <section class="guide-section" id="annotations">
-    <h2>Every custom Lease annotation</h2>
-    <p class="guide-lead">
-      Kubernetes stores annotation values as strings. JSON examples below are
-      JSON encoded inside those strings. An annotation that is not needed is
-      removed instead of being saved as an empty string. If required data is
-      broken or disagrees with other data, SPIRE stops rotation. It does not
-      guess or create another key.
-    </p>
-
-    <div class="annotation-grid">
-      <article class="annotation-card">
-        <h3>ID for the current Lease attempt</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-acquisition-token</code>
-        <dl>
-          <dt>Value</dt>
-          <dd>A fresh random UUIDv4 for each successful Lease acquisition, such as <code>7b21f0d3-63b8-4ec2-8421-9ba4c0d10487</code>.</dd>
-          <dt>Written</dt>
-          <dd>In the same conditional update that sets the holder, duration, acquire time, and renew time.</dd>
-          <dt>Read</dt>
-          <dd>Every Lease update checks both the owner ID and this exact UUID. This includes renew, complete, release, create-record, deletion-record, and blocked-key updates.</dd>
-          <dt>Removed</dt>
-          <dd>After a checked completion, or after a clean release when no remote change started. If SPIRE is not sure what happened, it leaves the UUID in the Lease.</dd>
-          <dt>Why it exists</dt>
-          <dd>It separates this Lease attempt from every older and newer attempt. A later owner can see that this exact attempt may need recovery. It is different from the server-process UUID and the completion UUID.</dd>
-        </dl>
-      </article>
-
-      <article class="annotation-card">
-        <h3>What the current owner was doing</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-acquisition-phase</code>
-        <dl>
-          <dt>Value</dt>
-          <dd><code>{"token":"7b21f0d3-63b8-4ec2-8421-9ba4c0d10487","state":"mutating"}</code></dd>
-          <dt>Written</dt>
-          <dd>When a server takes the Lease, and again just before it may change KMS, the database, or published public keys.</dd>
-          <dt>Validation</dt>
-          <dd>The embedded token must match the acquisition-token annotation, and the state must be one of the four values below.</dd>
-          <dt>Removed</dt>
-          <dd>Together with the acquisition UUID after completion or a clean release. It stays if SPIRE is not sure whether a remote change happened.</dd>
-          <dt>Why it exists</dt>
-          <dd>It tells recovery whether the old owner only took the Lease or may already have changed another system.</dd>
-        </dl>
-      </article>
-
-      <article class="annotation-card">
-        <h3>ID for the last completed change</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-completion-token</code>
-        <dl>
-          <dt>Value</dt>
-          <dd>A fresh UUIDv4, such as <code>01f3aa92-14de-46ad-a087-6ea8dbaf2770</code>.</dd>
-          <dt>Written</dt>
-          <dd>Only after the owner reloads and checks the saved CA journal, published public key, and physical KMS key ARN. A recovery owner also writes a new UUID after it repairs old work.</dd>
-          <dt>Read</dt>
-          <dd>Each server remembers the last completion UUID it loaded. When the Lease has a different value, that server reloads all shared CA and KMS data.</dd>
-          <dt>Lifecycle</dt>
-          <dd>It stays in the idle Lease. The next completed change replaces it. A request that changes nothing does not replace it.</dd>
-          <dt>Why it exists</dt>
-          <dd>It is a saved signal that tells servers to reload. It does not grant Lease ownership. It does not contain CA data. It also does not prove that every server has finished reloading.</dd>
-        </dl>
-      </article>
-
-      <article class="annotation-card">
-        <h3>IDs of keys that are ready but not active</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-prepared-authorities</code>
-        <dl>
-          <dt>Value</dt>
-          <dd>A JSON object with only known authority types, such as <code>{"x509":"4c7d8e9fa1b2c3d4e5f60718293a4b5c6d7e8b21","jwt":"Zp8rT4ydBm7Q0vK9sFw2Xa5Ce6Nj1Lu3"}</code>.</dd>
-          <dt>Written</dt>
-          <dd>At completion. The JSON contains every X.509, JWT, and WIT authority that is currently PREPARED.</dd>
-          <dt>Read</dt>
-          <dd>Before activation, that server process must see the exact requested authority ID stay unchanged here for 20 seconds.</dd>
-          <dt>Removed</dt>
-          <dd>When no authority remains PREPARED. If another authority type is still PREPARED, that entry remains.</dd>
-          <dt>Why it exists</dt>
-          <dd>A CA journal row alone cannot start the 20-second wait. This Lease value ties the wait to one completed and checked change, so an older database time cannot make the wait end early.</dd>
-        </dl>
-      </article>
-
-      <article class="annotation-card">
-        <h3>KMS key creates that may be unfinished</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-pending-creates</code>
-        <dl>
-          <dt>Value</dt>
-          <dd>A map from logical key ID to the original create-attempt UUID, for example <code>{"JWT-Signer-B":"7aa3a0c7-f80b-4b27-9f8f-d8195cc96bd5"}</code>.</dd>
-          <dt>Written</dt>
-          <dd>Before SPIRE makes a KeyManager call that may create a key. The same UUID is sent with <code>CreateKey</code> in the <code>spire-create-token</code> tag.</dd>
-          <dt>Recovery</dt>
-          <dd>A later owner keeps the same UUID and does not create another key. It may use only the physical key that has this exact UUID tag.</dd>
-          <dt>Removed</dt>
-          <dd>It can be removed early only when a trusted error proves that AWS could not have created a key. Normally it is removed in the same Lease update that completes the change, after SPIRE checks the CA journal and KMS key.</dd>
-          <dt>Why it exists</dt>
-          <dd>AWS KMS <code>CreateKey</code> does not accept an idempotency token. Saving this record first prevents a lost success reply from causing a second KMS key.</dd>
-        </dl>
-      </article>
-
-      <article class="annotation-card">
-        <h3>Old physical keys waiting for deletion</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-pending-retirements</code>
-        <dl>
-          <dt>Value</dt>
-          <dd><code>[{"key_id":"x509-CA-A","pending_create_token":"42b77089-d501-45f1-901c-e16906beaf11","expected_fingerprint":"f5416512755d4aa8fdcce784121a8acb507b7d9b19db96831db5a74aef64ade2","retire_after":1787303105}]</code></dd>
-          <dt>Fields</dt>
-          <dd><code>key_id</code> is the SPIRE slot. <code>pending_create_token</code> is the new key's create UUID. <code>expected_fingerprint</code> is the new public key's SHA-256 hash. <code>retire_after</code> is the earliest deletion time in Unix seconds. The old ARN comes from the new key's <code>spire-retire-source</code> tag; it is not stored in this annotation.</dd>
-          <dt>Written</dt>
-          <dd>In the same Lease update that completes the change, after SPIRE proves the new key's public-key hash and proves exactly which old key it replaced. The list can hold at most 128 checked records.</dd>
-          <dt>Deadline</dt>
-          <dd>The old key cannot be deleted before its authority expires. It also cannot be deleted until at least 2 minutes and 5 seconds after completion. SPIRE uses whichever time is later.</dd>
-          <dt>Removed</dt>
-          <dd>Only after a later Lease owner checks the old-to-new key link again and proves that the old key is already <code>PendingDeletion</code> or is gone.</dd>
-          <dt>Why it exists</dt>
-          <dd>A slow server can keep using the old physical key ARN while it reloads. Because the deletion record is saved in the Lease, deletion can continue safely after a restart or crash.</dd>
-        </dl>
-      </article>
-
-      <article class="annotation-card">
-        <h3>Public keys that must never return</h3>
-        <code class="annotation-name">spire.spiffe.io/rotation-taint-tombstones</code>
-        <dl>
-          <dt>Value</dt>
-          <dd><code>{"v":1,"e":[{"k":"jwt","i":"Hf6mC9qeVb3T1xW8sJp4Ra0Ln2Uy7Zi5","p":"67fe82e07f3f406c3f365868b43eb09fd9a8614f9d85a8a046d7dd2802a62a11"}]}</code></dd>
-          <dt>Fields</dt>
-          <dd><code>v</code> is the format version. In each entry, <code>k</code> is the authority type, <code>i</code> is its authority ID, and <code>p</code> is the SHA-256 hash of its public key.</dd>
-          <dt>Written</dt>
-          <dd>Before removing public trust, the Lease owner adds the exact authority ID and SHA-256 hash of its public key.</dd>
-          <dt>Read</dt>
-          <dd>Startup and every reload read this list before deciding which public keys and signers are safe.</dd>
-          <dt>Lifecycle</dt>
-          <dd>Version 1 supports X.509 and JWT. SPIRE adds each record only once and does not remove it during normal completion, pruning, or restart.</dd>
-          <dt>Why it exists</dt>
-          <dd>An old update, a lost reply, or a restarted server cannot add back a public key that the cluster already removed.</dd>
-        </dl>
-      </article>
-    </div>
-
-    <h3>Acquisition phase values</h3>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>State</th>
-            <th>Meaning</th>
-            <th>Recovery consequence</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>acquired</code></td>
-            <td>The owner has the Lease but has not started changing KMS, the database, or published public keys.</td>
-            <td>If it stops in this phase, recovery knows no remote change started. For a new empty cluster, the Lease can be released without writing a false completion.</td>
-          </tr>
-          <tr>
-            <td><code>mutating</code></td>
-            <td>The owner is about to change KMS, the database, or published public keys, or may already have changed them.</td>
-            <td>The next owner must read those systems and check what happened. It cannot assume that nothing changed.</td>
-          </tr>
-          <tr>
-            <td><code>recovering</code></td>
-            <td>A new owner took over work that may be unfinished, and the old phase was valid.</td>
-            <td>It handles only that old work. After checking or repairing it, the owner writes a new completion UUID. A different requested change must be tried again.</td>
-          </tr>
-          <tr>
-            <td><code>legacy-ambiguous</code></td>
-            <td>An older patch saved an operation UUID but did not save what the server was doing.</td>
-            <td>The next server assumes that KMS, the database, or published public keys may have changed. An empty CA journal does not prove that no change happened.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <details class="reference">
-      <summary>Example Lease output with every annotation shape</summary>
-      <div class="details-body">
-        <p>
-          This combined example shows fields that can remain from earlier
-          attempts while a new operation is running. A normal Lease will not
-          always contain every annotation.
-        </p>
-<pre><code>apiVersion: coordination.k8s.io/v1
-kind: Lease
-metadata:
-  name: spire-server-ca-rotation-fc56a7aecf26
-  namespace: spire
-  resourceVersion: "12018"
-  annotations:
-    spire.spiffe.io/rotation-acquisition-token: "c944a1e8-b02b-49c7-8262-513204f28473"
-    spire.spiffe.io/rotation-acquisition-phase: '{"token":"c944a1e8-b02b-49c7-8262-513204f28473","state":"mutating"}'
-    spire.spiffe.io/rotation-completion-token: "fa9834aa-66b9-44c4-a11a-71845874225b"
-    spire.spiffe.io/rotation-prepared-authorities: '{"jwt":"Zp8rT4ydBm7Q0vK9sFw2Xa5Ce6Nj1Lu3"}'
-    spire.spiffe.io/rotation-pending-creates: '{"x509-CA-B":"c944a1e8-b02b-49c7-8262-513204f28473"}'
-    spire.spiffe.io/rotation-pending-retirements: '[{"key_id":"JWT-Signer-A","pending_create_token":"b13bcf7c-474c-4e45-aa83-abac1178f483","expected_fingerprint":"548e8af04c5621f4c4c75c1d50caf2e1a542523340e3359845f8c042a03f91cc","retire_after":1787303105}]'
-    spire.spiffe.io/rotation-taint-tombstones: '{"v":1,"e":[{"k":"jwt","i":"Hf6mC9qeVb3T1xW8sJp4Ra0Ln2Uy7Zi5","p":"67fe82e07f3f406c3f365868b43eb09fd9a8614f9d85a8a046d7dd2802a62a11"}]}'
-spec:
-  holderIdentity: "spire-server-1_b3a764c8-305a-4de0-82f7-253d90e2b4ae"
-  leaseDurationSeconds: 30
-  acquireTime: "2026-08-21T07:10:40Z"
-  renewTime: "2026-08-21T07:10:50Z"
-  leaseTransitions: 12</code></pre>
-        <p>
-          After successful completion, <code>holderIdentity</code> is an empty
-          string, acquisition token and phase are absent, and the completion,
-          prepared-key, old-key deletion, and blocked-public-key fields remain
-          only when they are needed.
-          Acquire time, renew time, duration, and transition count remain as
-          useful history.
-        </p>
-      </div>
-    </details>
-  </section>
-
-  <section class="guide-section" id="timers">
-    <h2>What the 10-second, 20-second, and other timers mean</h2>
-    <p class="guide-lead">
-      The two 10-second timers and the 20-second wait do different jobs. A timer
-      never gives a server permission to write. A Kubernetes update based on
-      the latest Lease version gives that permission.
-    </p>
-
-    <div class="timer-key">
-      <div class="timer-box">
-        <strong>10 seconds</strong>
-        Scheduled check: "Does this server see work that should run now?"
-      </div>
-      <div class="timer-box">
-        <strong>10 seconds</strong>
-        Lease renewal: "Can this owner still prove that it may continue?"
-      </div>
-      <div class="timer-box">
-        <strong>20 seconds</strong>
-        Local wait: "Has this server seen the same completion or prepared-key record for 20 seconds?"
-      </div>
-      <div class="timer-box">
-        <strong>30 seconds</strong>
-        Takeover wait: "How long has this server seen the old owner record stay unchanged?"
-      </div>
-    </div>
-
-    <div class="plain-callout warn">
-      <h3>The 20-second wait does not mean every server has reloaded</h3>
-      <p>
-        Each server process starts its own timer when it first reads the exact
-        Lease value. If server 2 sees it 10 seconds after server 0, server 2
-        still waits its own full 20 seconds. The writer does not hold the Lease
-        while it waits. A request that is too early returns. SPIRE then wakes
-        that process's scheduled check just after its 20 seconds end.
-      </p>
-      <p>
-        The wait gives SPIRE servers time to reload. It does not prove that
-        every pod, Agent, OIDC provider, S3 object, proxy, or client cache has
-        refreshed.
-      </p>
-    </div>
-
-    <h3>Timing reference</h3>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Where it applies</th>
-            <th>Purpose and practical effect</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>250ms</code></td>
-            <td>Waiting for a busy Lease</td>
-            <td>A forced API request tries again every 250 milliseconds when another server owns the Lease. Some AWS checks also repeat every 250 milliseconds, but that is a different loop.</td>
-          </tr>
-          <tr>
-            <td><code>1s</code></td>
-            <td>Startup retry</td>
-            <td>Before normal service starts, SPIRE retries until the needed ACTIVE and PREPARED records are safe, or until the server is stopping.</td>
-          </tr>
-          <tr>
-            <td><code>5s</code></td>
-            <td>One Kubernetes API call</td>
-            <td>Each Lease GET, CREATE, or UPDATE has a five-second limit. This is not the total time allowed for a KMS or database operation.</td>
-          </tr>
-          <tr>
-            <td><code>5s</code></td>
-            <td>How long a forced request waits for the Lease</td>
-            <td>Prepare, activate, taint, and revoke calls wait up to five seconds. Scheduled work does not wait; it tries again during a later check.</td>
-          </tr>
-          <tr>
-            <td><code>10s</code></td>
-            <td>Scheduled key check on every server</td>
-            <td>Each server has its own timer. It reloads new completed work, checks unfinished work, checks old keys due for deletion, and checks X.509, JWT, and WIT rotation. It tries to take the Lease only when work is needed.</td>
-          </tr>
-          <tr>
-            <td><code>10s</code></td>
-            <td>Lease renewal while one change runs</td>
-            <td>A background task updates <code>renewTime</code>. The owner also renews once just before it changes remote data. If any renew fails, SPIRE stops the work and will not start using a newly loaded signer.</td>
-          </tr>
-          <tr>
-            <td><code>10s</code></td>
-            <td>Checking an unclear AWS result</td>
-            <td>After some alias, tag, or deletion errors, SPIRE reads AWS again for up to 10 seconds to learn what happened. This is separate from the scheduled check and Lease renewal.</td>
-          </tr>
-          <tr>
-            <td><code>15s</code></td>
-            <td>Checking an unclear database result</td>
-            <td>SPIRE has up to 15 seconds to reload the database and find out whether a call that returned an error was actually saved. Lease cleanup can also need up to three separate five-second update attempts.</td>
-          </tr>
-          <tr>
-            <td><code>20s</code></td>
-            <td>Local wait after completion or prepare</td>
-            <td>Activation always waits for the exact prepared-authority value. A new completion also delays an unrelated prepare, taint, or revoke. Only a scheduled prepare for a key that will expire soon may skip an unrelated completion wait.</td>
-          </tr>
-          <tr>
-            <td><code>30s</code></td>
-            <td>Lease duration and minimum takeover wait</td>
-            <td>A process cannot take a held Lease until it has seen the owner ID, acquisition UUID, and renew time remain unchanged for the full duration.</td>
-          </tr>
-          <tr>
-            <td><code>30s</code></td>
-            <td>Waiting for AWS tags to appear</td>
-            <td>Before moving an alias away from an old key, the plugin waits for AWS tag search to show the required cluster ownership and replacement tags.</td>
-          </tr>
-          <tr>
-            <td>About <code>110s</code></td>
-            <td>When a server reports Not Ready</td>
-            <td>The rotation health check reports Not Ready after the 11th failed 10-second check in a row. The process still reports that it is alive. A busy Lease or a normal 20-second wait does not count as failure.</td>
-          </tr>
-          <tr>
-            <td>At least <code>125s</code></td>
-            <td>Old physical key after completion</td>
-            <td>Even if the old authority has already expired, its KMS key stays usable for at least 2 minutes and 5 seconds after completion. If the authority expires later, that later time is used.</td>
-          </tr>
-          <tr>
-            <td><code>5m</code></td>
-            <td>Shortest allowed CA lifetime</td>
-            <td>This leaves time to prepare, wait 20 seconds, recover from one failed owner, and take over before activation is due. Five minutes is only the supported minimum, not a good production value.</td>
-          </tr>
-          <tr>
-            <td><code>6h</code></td>
-            <td>Remove expired public keys and refresh KMS key tags</td>
-            <td>SPIRE checks whether old certificates or JWKs can be removed. It also updates <code>spire-last-update</code> on every KMS key this cluster owns, including old keys.</td>
-          </tr>
-          <tr>
-            <td><code>8h</code></td>
-            <td>Checking whether old CA journal rows can be removed</td>
-            <td>SPIRE checks old journal rows every eight hours. The copy kept in memory also has at most ten rows for each authority type.</td>
-          </tr>
-          <tr>
-            <td><code>24h</code> plus up to a <code>6h</code> tick</td>
-            <td>Expired certificates and JWKs</td>
-            <td>An expired JWK normally stays available for verification until at least 24 hours after NotAfter. It is then removed by a later successful six-hour cleanup check and OIDC refresh.</td>
-          </tr>
-          <tr>
-            <td><code>48h</code> check, no update for <code>14d</code></td>
-            <td>Cleanup for a cluster that no longer exists</td>
-            <td>A separate background job may treat another cluster ID as abandoned only after it checks tags, aliases, time, AWS account, region, and trust domain.</td>
-          </tr>
-          <tr>
-            <td><code>7d</code></td>
-            <td>AWS KMS deletion window</td>
-            <td>Once SPIRE schedules deletion, the key becomes PendingDeletion and cannot sign. AWS waits seven days before permanent deletion, allowing an approved cancellation during that period.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>How automatic prepare and activation times are calculated</h3>
-    <ul>
-      <li>Prepare at <code>NotAfter - min(authority lifetime / 2, 30 days)</code>.</li>
-      <li>Activate at <code>NotAfter - min(authority lifetime / 6, 7 days)</code>.</li>
-      <li>A 24-hour authority prepares 12 hours before expiry and activates 4 hours before expiry.</li>
-      <li>A 5-minute authority prepares 2 minutes 30 seconds before expiry and activates 50 seconds before expiry.</li>
-      <li>A manually forced prepare may happen earlier, but automatic activation still waits for its normal time. A forced activation can happen earlier only after that server has seen the saved prepared-key record for 20 seconds.</li>
-    </ul>
-    <p>
-      At the 5-minute floor, the prepare and activation thresholds are 100
-      seconds apart. In the worst expected case, SPIRE may need one 10-second
-      check, one 20-second wait, and two 30-second waits while Lease ownership
-      changes. This leaves only a little time to recover. More failures can use
-      all of that time, so production should use a longer lifetime.
-    </p>
-  </section>
-
-  <section class="guide-section" id="operation-flow">
-    <h2>What happens when SPIRE changes a shared key</h2>
-    <p class="guide-lead">
-      The same code handles automatic rotation, CLI requests, changes received
-      from an upstream authority, unfinished work, and delayed deletion of old
-      keys. The requested change differs, but all paths use the same Lease,
-      renewal, safety checks, completion update, and server reload.
-    </p>
-
-    <ol class="sequence">
-      <li>
-        <strong>A change reaches one server.</strong>
-        It can come from that server's 10-second scheduler, a LocalAuthority
-        gRPC call from the SPIRE CLI, or an upstream bundle event. The CLI
-        process never touches the Lease; the server pod handling the RPC does.
-      </li>
-      <li>
-        <strong>The server runs one key-changing task at a time.</strong>
-        Other key-changing calls wait inside that process. Normal signing can
-        continue at the same time.
-      </li>
-      <li>
-        <strong>It reads the latest shared data before trying the lock.</strong>
-        The server reads and checks the Lease. If it has not seen the current
-        completion UUID, it reloads the journal, published public keys, KMS
-        aliases, tags, public keys, and physical signing ARNs first.
-      </li>
-      <li>
-        <strong>It checks that the requested change is allowed.</strong>
-        A wrong authority ID or status fails before the server takes the Lease.
-        To activate a key, this process must have seen its exact prepared-key
-        record stay unchanged for 20 seconds.
-      </li>
-      <li>
-        <strong>It tries to take the lock.</strong>
-        The server sends the Lease version it read. Kubernetes accepts only one
-        competing update. The winner writes its server-process ID, a new
-        acquisition UUID, its phase, the 30-second duration, and the times. A
-        scheduled loser stops immediately. A forced API call retries every
-        250 milliseconds for up to 5 seconds.
-      </li>
-      <li>
-        <strong>It finishes old work before starting new work.</strong>
-        If the Lease contains an unfinished attempt, this owner checks and
-        repairs only that attempt. The new requested change must be tried again
-        later.
-      </li>
-      <li>
-        <strong>The owner starts renewal and reads everything again.</strong>
-        After taking the Lease, it rereads the latest journal, published public
-        keys, KMS aliases, tags, and public keys. It may learn that another
-        server already completed the request. Two prepare calls therefore use
-        the same result instead of creating two keys.
-      </li>
-      <li>
-        <strong>The owner checks the 20-second wait again.</strong>
-        The Lease values may have changed while the request waited. The owner
-        cannot use an old timer to skip the wait for a newer change.
-      </li>
-      <li>
-        <strong>The owner renews and records <code>mutating</code>.</strong>
-        It renews immediately before changing another system. Saving
-        <code>mutating</code> tells the next owner that KMS, the database, or
-        published public keys may already have changed.
-      </li>
-      <li>
-        <strong>The owner changes KMS, the journal, or published public keys.</strong>
-        Before a call that may create a key, it saves the create-attempt UUID.
-        SPIRE handles every result as one of three cases: no change happened,
-        the change was saved, or the result is unclear.
-      </li>
-      <li>
-        <strong>The owner reads back and checks saved changes.</strong>
-        It reads the saved result, checks that the public key matches the
-        physical KMS key, and checks any old-key deletion record. Only then may
-        this process start using the new signer.
-      </li>
-      <li>
-        <strong>One Lease update finishes the work and releases the lock.</strong>
-        It writes a new completion UUID, writes or removes the prepared-key
-        record, removes only finished key-create records, updates old-key
-        deletion records, removes the current acquisition fields, and clears
-        the owner.
-      </li>
-      <li>
-        <strong>Other servers reload the finished change.</strong>
-        On its next check, each other server sees the new completion UUID. It
-        reloads and checks the shared data, builds a local signer for the same
-        physical KMS key ARN, and remembers the UUID only in memory.
-      </li>
-    </ol>
-
-    <h3>How KMS chooses, creates, and routes a key</h3>
-    <p>
-      A logical alias has this shape:
-      <code>alias/SPIRE_SERVER/example_org/prod-cluster/JWT-Signer-A</code>.
-      The dots in the trust domain become underscores. The cluster ID and
-      logical key ID are not pod-specific.
-    </p>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Observed KMS state</th>
-            <th>Decision</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>The alias target is valid, matches this cluster's settings, and its public-key hash is not an old key already recorded in the journal.</td>
-            <td>Use that physical key. Do not create a key or move the alias.</td>
-          </tr>
-          <tr>
-            <td>The alias target is valid, but the CA journal shows that this physical key was already used earlier for this slot.</td>
-            <td>A new physical key is required. Remember the old ARN, find or create the key for this exact create UUID, put matching replacement tags on both keys, check them, and only then move the alias.</td>
-          </tr>
-          <tr>
-            <td>The alias is absent and no key has the current attempt token.</td>
-            <td>Create one key only if this is a new allowed attempt. Recovery-only mode refuses to create.</td>
-          </tr>
-          <tr>
-            <td>Exactly one valid key has the current create-attempt UUID.</td>
-            <td>Reuse it. Create or repair the normal alias before using it.</td>
-          </tr>
-          <tr>
-            <td>More than one key has the current create-attempt UUID.</td>
-            <td>Stop and keep every key unchanged for investigation.</td>
-          </tr>
-          <tr>
-            <td>The alias or key belongs to another cluster, has broken data, is unexpectedly disabled, has the wrong key type, or has conflicting owner tags.</td>
-            <td>Stop without changing anything. An alias that looks correct is not enough proof.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      The plugin turns off automatic AWS SDK retries for <code>CreateKey</code>.
-      AWS does not accept a safe retry ID for this call, so an automatic retry
-      could create two keys. SPIRE saves its own create UUID in the Lease and
-      puts the same UUID on the new KMS key. It then checks the returned ARN,
-      key ID, key type, allowed use, state, and public key. After an alias
-      update, SPIRE reads the alias again and checks its target.
-    </p>
-
-    <h3>KMS tag glossary</h3>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Tag</th>
-            <th>Meaning</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>spire-server-td</code></td>
-            <td>The exact SPIRE trust domain.</td>
-          </tr>
-          <tr>
-            <td><code>spire-server-id</code></td>
-            <td>The cluster ID in this plugin, even though the inherited tag name says server ID. It is not the pod name.</td>
-          </tr>
-          <tr>
-            <td><code>spire-key-id</code></td>
-            <td>The logical slot, such as <code>x509-CA-A</code> or <code>JWT-Signer-B</code>.</td>
-          </tr>
-          <tr>
-            <td><code>spire-active</code></td>
-            <td><code>true</code> means SPIRE manages this key. It does not mean that the CA journal currently marks it ACTIVE.</td>
-          </tr>
-          <tr>
-            <td><code>spire-last-update</code></td>
-            <td>Unix timestamp refreshed about every six hours for keys owned by the live cluster.</td>
-          </tr>
-          <tr>
-            <td><code>spire-create-token</code></td>
-            <td>The original key-create UUID. It lets another owner find the physical key created by this one attempt.</td>
-          </tr>
-          <tr>
-            <td><code>spire-retire-token</code></td>
-            <td>Written on the old key. It identifies the replacement attempt that is allowed to retire it.</td>
-          </tr>
-          <tr>
-            <td><code>spire-retire-source</code></td>
-            <td>Written on the new key. It stores the full physical ARN of the old key that was replaced.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="plain-callout good">
-      <h3>Use the alias to find a key; use the ARN to sign</h3>
-      <p>
-        After checking an alias target, the plugin builds a local signing handle.
-        It contains the logical key ID, physical ARN, public-key hash, key type,
-        trust domain, cluster ID, and plugin-process ID. A random secret known
-        only to this process protects the handle. For every <code>Sign</code>
-        request, the plugin checks the handle and sends the full ARN to KMS. If
-        KMS reports a different key ID, signing fails.
-      </p>
-      <p>
-        A restarted plugin process has a new secret. It must check the KMS key
-        again and build new local signing handles. It cannot use a handle made
-        by another pod.
-      </p>
-    </div>
-
-    <h3>Prepare, activate, and retire are separate stages</h3>
-    <div class="guide-grid">
-      <div class="guide-card">
-        <h4>Prepare</h4>
-        <p>
-          Find or create the next physical key. For X.509, save the CA
-          certificate and chain as PREPARED in the journal. For JWT and WIT,
-          publish the public key and save a PREPARED journal row. PREPARED means
-          the public key is available, but SPIRE is not signing with it yet. The
-          completion update also writes its authority ID to the Lease.
-        </p>
-      </div>
-      <div class="guide-card">
-        <h4>Activate</h4>
-        <p>
-          After this process has seen the same prepared authority ID for 20
-          seconds, save the new authority as ACTIVE and the old one as OLD.
-          Read the saved data again before this process starts using the new
-          physical key ARN. Then write another completion UUID.
-        </p>
-      </div>
-      <div class="guide-card">
-        <h4>Delete an old physical key safely</h4>
-        <p>
-          When a later rotation reuses the same A or B slot, the alias moves
-          from the old physical key to the new one. The old key stays Enabled
-          with no alias until the saved safe deletion time. A later Lease owner
-          checks both keys again before asking KMS to delete the old key with a
-          seven-day window.
-        </p>
-      </div>
-    </div>
-    <p>
-      Moving from active slot A to prepared slot B does not delete A. The B
-      alias names its own physical key. A physical A key is displaced only when
-      a later cycle reuses logical slot A for A2. This is why several valid KMS
-      keys can coexist while every server still agrees on the current signer.
-    </p>
-
-    <h3>Forced rotation from the SPIRE CLI</h3>
-    <ol>
-      <li>The CLI sends a LocalAuthority gRPC request. It does not call Kubernetes.</li>
-      <li>The server pod that receives the request reads the Lease, reloads completed work it has not seen, checks the requested change, and checks its local 20-second wait.</li>
-      <li>If another owner holds the Lease, the server polls every 250ms for up to 5 seconds. If it still cannot acquire, the request returns a retryable unavailable result.</li>
-      <li>After taking the Lease, the owner reloads and checks whether another server already completed the same request. Repeating prepare returns the already prepared authority instead of creating another key.</li>
-      <li>A forced prepare can happen before the normal half-life threshold, but it cannot bypass a fresh unrelated completion window.</li>
-      <li>A forced activate can happen before the normal automatic activation time, but never before that serving pod has observed the exact prepared marker for 20 seconds.</li>
-      <li>Taint and revoke first save a blocked-public-key record, then remove public trust. They do not directly delete the physical KMS key.</li>
-    </ol>
-    <p>
-      If a forced command immediately activates after prepare, it normally sees
-      a <code>propagation pending</code> error. This simply means that pod has not
-      seen the saved prepared-key record for 20 seconds. Retry after its local
-      wait. If a load balancer sends the next request to another pod, that pod
-      may have started its own 20-second wait later.
-    </p>
-
-    <h3>Scheduled rotation</h3>
-    <ul>
-      <li>Every server runs its own check every 10 seconds. The timers do not start together, and there is no permanent rotation owner.</li>
-      <li>Each check first reloads a new completion UUID and looks for unfinished work, even when no normal rotation is due.</li>
-      <li>SPIRE tries an old-key deletion before a normal prepare. It first handles a missing current authority, an authority that is not ACTIVE, a new key that is ready to become active, or a key that is close to expiring.</li>
-      <li>X.509 is checked before JWT and WIT because the journal and subordinate signing flow depend on a usable X.509 authority.</li>
-      <li>Each check tries to delete at most one old key: the one that has waited the longest.</li>
-      <li>If a scheduled check cannot take the Lease, it does not wait. It checks again later.</li>
-    </ul>
-  </section>
-
-  <section class="guide-section" id="recovery">
-    <h2>Failure recovery and why duplicate keys are avoided</h2>
-    <p class="guide-lead">
-      An error does not always mean that a change failed. AWS, Kubernetes, or
-      the database may save a change and then lose the reply. SPIRE records
-      recovery information before remote writes, reads the saved data again
-      after an unclear result, and repeats only work that is safe to repeat.
-    </p>
-
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Failure point</th>
-            <th>State left behind</th>
-            <th>What the successor does</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Before the acquire update commits</td>
-            <td>No new holder or acquisition token</td>
-            <td>Another server can acquire normally.</td>
-          </tr>
-          <tr>
-            <td>After <code>acquired</code>, before <code>mutating</code></td>
-            <td>A held Lease whose phase proves that no remote change started</td>
-            <td>After this process sees the Lease stay unchanged for 30 seconds, it can prove that a new empty cluster did not start a remote change and can release the Lease cleanly.</td>
-          </tr>
-          <tr>
-            <td>After <code>mutating</code>, before <code>CreateKey</code></td>
-            <td>The acquisition UUID and phase, and normally a rotation-pending-creates entry saved before the call</td>
-            <td>Reload KMS and the journal. If a trusted error proves that no key was created, clear the record. Otherwise keep this exact attempt UUID and do not create another key.</td>
-          </tr>
-          <tr>
-            <td><code>CreateKey</code> succeeds but its response is lost</td>
-            <td>The Lease maps the logical key to UUID T; the physical key has <code>spire-create-token=T</code></td>
-            <td>Search KMS for the exact create UUID T. Reuse one valid match. If no key is found, recovery creates nothing. If more than one key matches, stop and require investigation.</td>
-          </tr>
-          <tr>
-            <td>Alias update returns an error or times out</td>
-            <td>The alias may or may not have moved, and both old/new physical keys remain</td>
-            <td>Read the alias again for a limited time and check its full target ARN. If the answer is still unclear, keep the recovery records and leave both keys unchanged.</td>
-          </tr>
-          <tr>
-            <td>The database saves the change, but its reply is lost</td>
-            <td>The journal or bundle may already contain the requested change</td>
-            <td>Reload the database for up to 15 seconds. If the requested change is present, treat it as saved instead of writing another key version.</td>
-          </tr>
-          <tr>
-            <td>The process stops after saving remote data but before completion</td>
-            <td>Journal/KMS/public state may be new, but the old completion UUID remains and acquisition evidence is unfinished</td>
-            <td>Check and finish that old attempt, write a new completion UUID, and ask any unrelated caller to try again later.</td>
-          </tr>
-          <tr>
-            <td>Lease renewal fails during work</td>
-            <td>The owner can no longer prove authority</td>
-            <td>Immediately mark the Lease as lost and stop the running work. Even if a remote write just finished, this process cannot start using the new signer. The next Lease owner reads and repairs the saved state.</td>
-          </tr>
-          <tr>
-            <td>Completion update result is lost</td>
-            <td>Kubernetes saved either the whole update or none of it</td>
-            <td>Read the Lease again. A Kubernetes Lease update is all-or-nothing, and its version number prevents an old owner from overwriting a newer update.</td>
-          </tr>
-          <tr>
-            <td>Old-key deletion response is lost</td>
-            <td>The saved old-key deletion record may remain even though KMS already says PendingDeletion</td>
-            <td>Check that physical ARN again. If KMS says <code>PendingDeletion</code> or <code>NotFound</code>, remove only that matching deletion record. If the answer is still unclear, keep the record and try later.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Clean release, uncertain release, and completion</h3>
-    <div class="guide-grid">
-      <div class="guide-card">
-        <h4>Clean release</h4>
-        <p>No remote change was attempted. Clear the owner, acquisition UUID, and phase. Do not write a completion UUID or start a 20-second wait.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Uncertain release</h4>
-        <p>Clear the owner so another server can start recovery immediately. Keep the acquisition UUID, phase, unfinished key-create record, and other recovery information.</p>
-      </div>
-      <div class="guide-card">
-        <h4>Checked completion</h4>
-        <p>Read the shared data again and prove that it has one valid result. Then update completion, prepared-key, and old-key deletion records in one Lease update, remove finished recovery records, and release the Lease.</p>
-      </div>
-    </div>
-
-    <h3>The two ways SPIRE deletes old physical keys</h3>
-    <div class="table-wrap">
-      <table class="reference-table">
-        <thead>
-          <tr>
-            <th>Path</th>
-            <th>Which keys</th>
-            <th>Safety checks</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Normal deletion after replacement</td>
-            <td>An old physical key owned by this cluster. It was replaced when a later rotation reused the same A or B slot.</td>
-            <td>The old authority's NotAfter time, the minimum delay after completion, logical key ID, original create UUID, new key's public-key hash, old key ARN, matching tags on both keys, and every KMS alias.</td>
-            <td>A later Lease owner schedules that exact old key with a seven-day KMS window. It removes only that deletion record after AWS says <code>PendingDeletion</code> or <code>NotFound</code>.</td>
-          </tr>
-          <tr>
-            <td>Cleanup for a cluster that no longer exists</td>
-            <td>A key with another cluster ID in the same trust domain</td>
-            <td>A different cluster owner, no update for at least 14 days, the 48-hour cleanup check, complete owner tags, only expected aliases, two reads before deletion, and no evidence that the old cluster is still running.</td>
-            <td>Schedules seven-day deletion only after every check passes. Keys owned by the current cluster never use this path.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      Removing public keys is separate from both KMS deletion paths. Scheduling
-      or deleting a private KMS key does not remove its X.509 certificate or JWK
-      from the SPIRE bundle or OIDC output. Certificates and JWKs follow their
-      own expiry, taint, revoke, and pruning rules.
-    </p>
-  </section>
-
-  <section class="guide-section" id="migration">
-    <h2>Migration, scale changes, restart, and rollback</h2>
-    <p class="guide-lead">
-      Rolling restarts are safe after every pod uses the cluster plugin and the
-      same settings. The first move from per-pod <code>aws_kms</code> is
-      different. Stop all old writers, choose one existing key set and matching
-      journal, and then start cluster mode. Never run the old and new plugins at
-      the same time.
-    </p>
-
-    <h3>Initial migration from one key set per pod</h3>
-    <ol>
-      <li>Record each old pod's KMS identifier, aliases, physical ARNs, public-key hashes, journal rows, bundle certificates, JWK IDs, key policies, and current credentials.</li>
-      <li>Choose one pod's existing KMS identifier and matching CA journal. Use that identifier as both the new cluster ID and <code>key_identifier_value</code>.</li>
-      <li>Stop every old SPIRE Server process and anything that could restart one.</li>
-      <li>Save the before-state from KMS, the database, the bundle, OIDC, and the empty pre-created Lease.</li>
-      <li>Start one patched pod with the selected identifier and <code>require_existing_journal = true</code>.</li>
-      <li>At first, deny KMS key creation, alias changes, and deletion requests. A safe first start should find and use the existing keys and journal without changing them.</li>
-      <li>Compare the new state with the saved before-state. Check key count, alias targets, journal contents, authority IDs, completion state, certificates, JWKs, and a real KMS signing request.</li>
-      <li>After all checks pass and the migration is approved, restore the KMS permissions and add more pods. Each new pod must load the same keys and journal without creating anything.</li>
-    </ol>
-    <p>
-      A brand-new cluster identifier does not point at the selected pod's old
-      aliases and journal. Using a new identifier is not an in-place move;
-      it needs a separately reviewed key namespace and trust migration. A safe
-      in-place move keeps the selected old identifier.
-    </p>
-
-    <h3>What happens to old JWKs and certificates?</h3>
-    <ul>
-      <li>The switch does not remove authorities from nonselected stopped pods.</li>
-      <li>Previously issued JWT-SVIDs continue to verify because their JWKs remain in the shared bundle and OIDC JWKS.</li>
-      <li>Previously issued X.509-SVIDs continue to verify through their retained roots.</li>
-      <li>New credentials after the switch use the selected cluster's ACTIVE authority on every server.</li>
-      <li>An expired JWK normally becomes eligible for removal 24 hours after its NotAfter, then waits for the next successful six-hour prune and the next OIDC refresh.</li>
-      <li>An explicit taint or revoke follows its own public-key removal path and is protected by the saved blocked-key record.</li>
-    </ul>
-
-    <h3>When rolling restart is safe</h3>
-    <p>
-      After migration has completed and all pods use the same patch, cluster ID,
-      KeyManager, Lease, datastore, and trust domain, rolling restart and scale
-      changes are expected operations. A restarted pod gets a new boot UUID,
-      reads the completion token, discovers the unique shared journal, resolves
-      the physical KMS key ARNs, and joins without creating a key. It may stay
-      not ready for a short time while it reloads and checks the shared data.
-    </p>
-
-    <h3>Rollback boundary</h3>
-    <ul>
-      <li>
-        Before cluster mode creates a key, moves an alias, changes the journal,
-        or schedules deletion, rollback can start one standard
-        <code>aws_kms</code> pod with the selected old identifier. First stop
-        every patched pod and compare the current state with the saved
-        before-state.
-      </li>
-      <li>
-        After cluster mode makes any of those changes, rollback requires people
-        to inspect and repair KMS, the Lease, the journal, and the bundle.
-        Changing only the plugin name is not enough.
-      </li>
-      <li>
-        Never run old and new plugin pods together during rollback. Record every
-        physical key ARN and PendingDeletion date. If an old key is needed,
-        cancelling deletion returns it in the Disabled state. Enabling it and
-        restoring the alias and journal must be separately approved and checked.
-      </li>
-    </ul>
-  </section>
-
-  <section class="guide-section">
-    <h2>Expected behavior</h2>
-    <p>These checks cover the main state changes:</p>
-    <ol>
-      <li><strong>Configuration:</strong> The cluster ID, fixed key identifier, built-in plugin name, tag discovery setting, and pre-created Lease match on every server.</li>
-      <li><strong>Steady state:</strong> Three Ready servers use the same full signer ARNs and shared journal IDs. No server holds the Lease. The aliases point to the checked shared keys, and the current JWK set matches those keys.</li>
-      <li><strong>First startup:</strong> The owner creates an acquisition UUID, changes the phase, saves the create record before <code>CreateKey</code>, creates the journal, and finishes with one Lease update that writes completion and clears the owner.</li>
-      <li><strong>Normal rotation:</strong> SPIRE prepares the new key, saves that it is ready, waits 20 seconds, switches to the key, reloads the change on other servers, and later deletes the old key.</li>
-      <li><strong>Concurrent prepare:</strong> Kubernetes accepts one Lease update and rejects requests that used an older Lease version. Other callers return the key that is already prepared.</li>
-      <li><strong>Lost <code>CreateKey</code> response:</strong> The Lease and KMS tag contain the same UUID. The next owner finds and reuses that physical ARN without creating another key.</li>
-      <li><strong>Crash during activation:</strong> The renew time stops changing. Another server waits 30 seconds, finishes the old work before starting new work, and writes a new completion UUID.</li>
-      <li><strong>Migration:</strong> The selected old identifier, aliases, and CA journal stay unchanged. Old JWKs remain available, and more servers start without creating more keys.</li>
-    </ol>
-  </section>
-
-  <h2 class="scenario-heading" id="scenarios">Rotation and failure scenarios</h2>
-  <p class="scenario-summary">
-    The simulator uses complete example ARNs, UUIDs, aliases, Lease fields,
-    journal rows, public material, and local routes. It shows saved end state as
-    well as temporary values that changed while a step was running.
-  </p>
+  <h2 class="scenario-heading" id="scenarios">Watch what happens</h2>
+  <p class="scenario-summary">A signing key makes an identity credential (an SVID). Choose a situation, then move through it one step at a time. Exact records are available below each story.</p>
 
   <section class="controls" aria-label="Scenario controls">
     <div class="field">
@@ -2083,14 +852,24 @@ spec:
       <p class="scenario-summary" id="scenarioSummary"></p>
     </section>
 
+    <div class="playback">
+      <button type="button" id="playButton" aria-pressed="false">▶ Play</button>
+      <button type="button" id="restartButton">Restart story</button>
+      <p>Play advances every 6.5 seconds. Real waits of seconds, hours, or days are skipped. Pause whenever you want to read.</p>
+    </div>
+    <progress id="stepProgress" value="1" max="9" aria-label="Story progress"></progress>
     <section class="step-box" id="stepBox" aria-live="polite">
       <div class="step-title" id="stepTitle"></div>
       <p class="step-text" id="stepText"></p>
       <p class="outcome" id="stepOutcome"></p>
     </section>
 
+    <section id="flowBoard" class="flow-board" aria-label="Illustrated state after this step"></section>
+
+    <details class="records-panel"><summary>See the records and changes for this step</summary>
     <section class="section" aria-labelledby="patchDetailsHeading">
-      <h3 id="patchDetailsHeading">What happens in this step</h3>
+      <h3 id="patchDetailsHeading">What happens in this step</h3><p class="section-note">These are simplified example records, not a complete production dump. The extra-attempt story also shows allocated and sealed JWT publication records; other stories omit that transient publication detail.</p>
+      <div id="technicalStory" class="technical-story"></div>
       <div class="patch-actions" id="patchActions"></div>
       <div class="subsection">
         <h4 id="stepChangesHeading">Values changed by this step</h4>
@@ -2138,9 +917,9 @@ spec:
     <section class="section">
       <h3>AWS KMS keys, including old keys</h3>
       <p class="section-note">
-        Full physical ARNs and every SPIRE-managed tag are visible. A key in
-        Enabled state with a <code>spire-retirement-token</code> tag may have no
-        alias while it waits for its <code>spire-retire-after</code> time. It can still sign when called
+        The example key addresses and tags are shown below. A key in
+        Enabled state with a <code>spire-retire-token</code> tag may have no
+        alias while it waits for the <code>retire_after</code> time saved in the Lease. It can still sign when called
         by exact ARN. A key in PendingDeletion cannot sign, even though AWS
         waits seven days before permanent deletion.
       </p>
@@ -2150,14 +929,123 @@ spec:
         <div class="table-wrap" id="aliases"></div>
       </div>
     </section>
+  </details>
   </div>
 
-  <p class="footer">
-    This example enables X.509 and JWT. WIT-SVID signing is disabled, so it has
-    no journal, KMS key, or alias rows here.
-  </p>
-</main>
+  <details class="guide-section" id="design-notes"><summary>Read the design and technical reference</summary>
+  <section class="guide-section" id="design-overview">
+    <p class="eyebrow">Start here</p><h2>What is shared?</h2>
+    <p class="guide-lead">Every SPIRE server in one cluster uses the same set of signing keys. Adding a server does not need another set of keys.</p>
+    <div class="guide-grid">
+      <div class="guide-card"><h3>One set per cluster</h3><p>X.509 certificates and JWT tokens use different keys. Each kind has an A slot and a B slot, so SPIRE can prepare the next key while the current one still works.</p></div>
+      <div class="guide-card"><h3>All servers can sign</h3><p>Each server sends signing requests to KMS using a saved, exact key address. It does not take the rotation lock for every SVID request.</p></div>
+      <div class="guide-card"><h3>One server makes changes</h3><p>A Kubernetes Lease acts as the rotation lock. One server owns it while changing shared signing state. Other servers can keep using the keys they already loaded.</p></div>
+    </div>
+    <p><strong>“One key per cluster” does not mean one physical key in the AWS console.</strong> Current keys, prepared keys, old keys, and keys waiting for deletion can overlap. X.509 and JWT rotate separately. Disabled signing types do not need their own keys; this example leaves WIT disabled.</p>
+    <h3>The normal rotation, in five steps</h3>
+    <ol class="reading-steps"><li><strong>Keep using A.</strong> One server takes the lock and prepares B.</li><li><strong>Tell clients about B.</strong> Publish its certificate or public key and save the shared record.</li><li><strong>Wait before switching.</strong> The server that will activate B must have observed the unchanged preparation marker for 20 seconds.</li><li><strong>Save the switch, then use B.</strong> Other servers see a completion marker and reload.</li><li><strong>Clean up later.</strong> A physical key is deleted only after its deadline and replacement checks pass.</li></ol>
+    <p>The 20-second wait gives other servers time to notice the change. It is not an acknowledgement from every server, agent, or client.</p>
+  </section>
+  <section class="guide-section" id="nested-clusters">
+    <p class="eyebrow">Root + two subordinate clusters</p><h2>They share trust, not private keys.</h2>
+    <div class="nested-map"><div class="nested-root"><strong>Root cluster</strong><span>Its own Lease, database records, and KMS signing keys</span></div><div class="nested-link">Signs child CA certificates · publishes child JWT public keys</div><div class="nested-children"><div><strong>Subordinate 01</strong><span>Its own keys and rotation lock</span></div><div><strong>Subordinate 02</strong><span>Its own keys and rotation lock</span></div></div></div>
+    <p>A subordinate asks the root to sign its CA certificate. The private key stays in the subordinate's KMS key. Publishing the subordinate's JWT public key at the root does not create another root signing key.</p>
+    <p><strong>A requested 90-day child CA is not guaranteed 90 days.</strong> Its certificate cannot outlive the parent certificate used to sign it. Readiness also checks every certificate in the installed X.509 chain. JWT keys have their own expiry, so the X.509 and JWT countdowns can differ.</p>
+    <p>If the root becomes unavailable, a subordinate can keep using its already installed signer while it remains valid and the subordinate's other dependencies work. It may be unable to prepare its next CA or publish its next JWT key.</p>
+    <p>The root may itself use AWS PCA or another upstream authority. The same distinction applies: failure to renew is different from failure to sign with an already loaded key.</p>
+  </section>
+  <section class="guide-section" id="recovery">
+    <p class="eyebrow">When something fails</p><h2>“Cannot rotate” and “cannot serve” are different.</h2>
+    <div class="plain-callout"><p>A rotation error alone does not make an initialized server unready. The installed signers must still be valid, consistent, and not known to be blocked. Every enabled signer and every certificate in the X.509 chain must have <strong>more than six minutes</strong> left. Other health checks still apply.</p></div>
+    <div class="table-wrap"><table class="reference-table"><thead><tr><th>What is unavailable?</th><th>What pauses?</th><th>What can still work?</th></tr></thead><tbody>
+      <tr><td>Kubernetes Lease API</td><td>Changes that require the rotation lock.</td><td>Signing with the already installed key, if KMS Sign and the other serving checks work.</td></tr>
+      <tr><td>KMS key search or tag reads</td><td>Discovery and safe reload of changed keys.</td><td>The exact key already in memory can still sign if KMS Sign works.</td></tr>
+      <tr><td>KMS Sign</td><td>New signatures that need that KMS key.</td><td>Already issued credentials may remain valid. The separate signing health check can fail readiness and liveness.</td></tr>
+      <tr><td>The cluster database</td><td>Rotation and publication that require a fresh read or write.</td><td>Some serving paths can use previously loaded data. This is not a promise that every SVID request succeeds.</td></tr>
+      <tr><td>The root or another upstream CA</td><td>Renewal and publication that require that upstream.</td><td>A subordinate's installed signer can keep working within its remaining validity.</td></tr>
+    </tbody></table></div>
+    <p>Startup is different: a new process must load and validate its initial signing state. It cannot serve with a key it has never loaded.</p>
+    <details><summary>Database grace and cached bundles</summary><p>Ordinary bundle reads may reuse a previously fetched bundle for less than 96 hours during a database error. That does not promise 96 hours of successful requests. Database health has a separate configured grace period, measured from its last successful uncached check. A zero grace period gives no grace, and a process with no successful check has none either. At the deadline, database health can fail both readiness and liveness. Reading a cached bundle does not restart that timer.</p></details>
+    <h3>If AWS may have created a key but the reply was lost</h3>
+    <ol class="reading-steps"><li><strong>Remember the attempt.</strong> SPIRE saves an attempt ID before calling CreateKey. The new key gets the same ID as a tag.</li><li><strong>Look for that exact key.</strong> Search only the matching trust domain, cluster, slot, and attempt ID. If found and validated, reuse it.</li><li><strong>Wait before trying another creation.</strong> Two successful, complete searches for the same current attempt must find no visible match at least one hour apart.</li><li><strong>Spend one extra attempt before calling AWS.</strong> Save the old and new attempt IDs together in the Lease. A crash or restart cannot give that permission back.</li><li><strong>Remember any late old key.</strong> If the earlier key appears later, keep it unused for review. Do not silently adopt or automatically delete it.</li></ol>
+    <div class="plain-callout warn"><h3>Ten extra attempts, shared by the whole cluster</h3><p>The retained Lease history allows at most <strong>10 additional recovery attempts</strong> across all signing slots. It is not ten keys per rotation. Normal successful rotations can continue after those ten are spent.</p><p>Restarts and completed rotations do not reset the quota. A restart does reset the local one-hour observation wait. Even a crash before the extra AWS call, or a definite rejection of that call, does not refund the saved authorization.</p><p>At the limit, SPIRE logs warnings and reports metrics. It keeps looking for the existing pending key, but cannot authorize another replacement. An external alert rule must deliver any notification.</p></div>
+    <details><summary>What does a “complete search” mean?</summary><p>The tag search can return several pages. SPIRE must read every page successfully, reach the end of pagination, and validate the returned records. An error, partial response, bad record, or repeated page token does not count. Even a complete empty search is not proof that no key exists: AWS's tag index may not show a recently created key yet.</p><p>There is no fallback that lists every KMS key and reads every key's tags. Alias listing can still return names from the account before SPIRE filters its own prefix; it must not adopt another cluster's key.</p></details>
+  </section>
+  <section class="guide-section" id="fresh-trust">
+    <p class="eyebrow">Trust must be checked before it changes</p><h2>An old bundle can help serve. It cannot approve a rotation.</h2>
+    <p>A bundle contains public certificates and keys used to verify identities. A cached copy may help ordinary serving during a database outage. But it may be missing a recent change.</p>
+    <ol class="reading-steps"><li><strong>Ask the database again.</strong> Coordinated rotation, relevant child requests to the root, and coordinated bundle publishing bypass the stale-cache fallback.</li><li><strong>Stop that change if the read fails.</strong> Do not treat yesterday's bundle as proof that today's new key was published.</li><li><strong>Remember blocked keys.</strong> Keys covered by a saved taint or revocation record stay blocked after removal, restart, or an old update.</li></ol>
+    <p>For a child's JWT publication, the root adds the public key; it does not create a new root signer. The database append rechecks the current rotation ownership and blocked-key records before saving. A later identical request can reuse the same public material instead of generating another JWK identity.</p>
+    <p>Previously trusted keys are not all deleted just because an upstream snapshot omits them. Normal expiry, pruning, and explicit taint or revoke handling have separate rules. A fresh read also does not make a later upload to S3 one atomic database transaction.</p>
+  </section>
+  <section class="guide-section" id="timers">
+    <p class="eyebrow">The numbers that matter</p><h2>Small waits for coordination. Large margins for serving.</h2>
+    <div class="table-wrap"><table class="reference-table"><thead><tr><th>Time or limit</th><th>Plain meaning</th></tr></thead><tbody>
+      <tr><td>10 seconds</td><td>The scheduled rotation check interval. A Lease owner also renews about every 10 seconds.</td></tr>
+      <tr><td>30 seconds</td><td>A replacement owner observes an unchanged Lease for its takeover wait. It does not simply trust the other server's wall clock.</td></tr>
+      <tr><td>20 seconds</td><td>The local wait after seeing an unchanged preparation or completion marker. This is not proof that every replica has reloaded.</td></tr>
+      <tr><td>5 seconds / 15 seconds</td><td>Individual Kubernetes call budget / bounded reconciliation of an uncertain result.</td></tr>
+      <tr><td>More than 6 minutes</td><td>Validity required by the coordinated readiness check for every installed signer and the X.509 chain.</td></tr>
+      <tr><td>At least 1 hour</td><td>Separation between the two complete empty searches that can authorize one extra creation attempt.</td></tr>
+      <tr><td>10 additional attempts</td><td>The permanent extra-creation quota in the cluster's retained Lease history. Restarting does not refill it.</td></tr>
+      <tr><td>Old expiry, or about 2 minutes + 5 seconds</td><td>Retirement uses the later deadline. The small grace is anchored to the Lease update attempt and recalculated on update retries, not promised from the final response time.</td></tr>
+      <tr><td>7 days</td><td>The AWS physical-deletion waiting period. A key in PendingDeletion stops signing immediately.</td></tr>
+      <tr><td>15 seconds at root / 20 seconds at child</td><td>Coordinated JWT-publication budgets. The root's budget includes its checks and lock wait; the child allows time for the reply and local work. These are not deadlines for every upstream request.</td></tr>
+    </tbody></table></div>
+    <div class="plain-callout warn"><strong>The five-minute input floor is not a usable readiness target.</strong> The rotation code accepts CA lifetimes of at least five minutes, but a five-minute signer cannot pass the more-than-six-minute readiness rule. Even a 30-minute CA normally activates its replacement with only five minutes left. Use much longer lifetimes and leave time for failures and recovery.</div>
+    <p>Automatic preparation starts with the smaller of half the current lifetime or 30 days remaining. Automatic activation starts with the smaller of one sixth of the lifetime or 7 days remaining. Parent expiry can shorten a subordinate's actual lifetime. Manual preparation does not bypass publication and consistency checks.</p>
+  </section>
+  <section class="guide-section" id="operation-flow">
+    <p class="eyebrow">Old keys and cleanup</p><h2>No alias does not mean “safe to delete.”</h2>
+    <p>An old enabled key can intentionally have no alias. A server that has not reloaded may still hold that exact key address. Moving the alias does not change the saved address used for signing.</p>
+    <p>Normal cleanup checks the saved deadline, the old and replacement key tags, ownership, the replacement public key, and the aliases. The old key must have no alias. A missing check keeps the key and its cleanup record for a later attempt.</p>
+    <p>Due preparation and activation generally take priority over cleanup. Cleanup can run first when needed to unblock the pending creation for that same slot. There is no acknowledgement from every server before deletion.</p>
+    <div class="guide-grid"><div class="guide-card"><h3>Enabled</h3><p>KMS can still use the key to sign if access is permitted. The key may be current, prepared, old, or retained for review.</p></div><div class="guide-card"><h3>PendingDeletion</h3><p>KMS no longer signs with it. The seven-day wait is time before physical removal, not seven extra days of signing.</p></div><div class="guide-card"><h3>Public trust</h3><p>Certificates and JWKs are separate from the private KMS key. They can remain published to verify credentials already issued.</p></div></div>
+    <p><strong>This cluster plugin does not automatically delete another cluster's keys.</strong> A stale heartbeat or a missing alias alone does not prove those keys are unused. Retained keys from abandoned attempts and stopped clusters need review.</p>
+    <details><summary>Names seen in KMS and in the Lease</summary><p><code>spire-retire-token</code> is the old key's replacement-attempt tag. <code>spire-retire-source</code> on the replacement names the old key. The earliest deletion time is <code>retire_after</code> in the Lease's pending-retirement record; it is not a <code>spire-retire-after</code> KMS tag.</p><p>A completed tag inventory can still show a key already in PendingDeletion. Repeated “keeping key” inventory messages do not cancel its deletion. SPIRE checks the key state and avoids another scheduling call when it is already pending deletion.</p></details>
+  </section>
+  <section class="guide-section" id="lease-design">
+    <p class="eyebrow">Configuration and saved records</p><h2>The Lease remembers work across restarts.</h2>
+    <p>The cluster identity comes from <code>aws_kms_cluster.key_identifier_value</code>. Every server in that cluster must use the same value. A separate <code>ca_rotation_lock.cluster_id</code> setting is no longer used.</p>
+    <p>The default Lease name is <code>spire-server-ca-rotation.&lt;cluster-id&gt;.&lt;trust-domain&gt;</code>. For the examples here it is <code>spire-server-ca-rotation.prod-cluster.example.org</code>. An explicit <code>lease_name</code> can override the default.</p>
+    <p>Normal deployments create the Lease before startup and grant SPIRE read/update access. <code>allow_lease_creation</code> can allow creation. A new process cannot skip required startup checks just because another replica is already serving.</p>
+    <h3 id="annotations">What the records mean</h3>
+    <div class="table-wrap"><table class="reference-table"><thead><tr><th>Record</th><th>What it remembers</th></tr></thead><tbody>
+      <tr><td>holderIdentity, resourceVersion, renewTime</td><td>Who owns the lock, the Kubernetes version used for conditional updates, and the observed renewal state.</td></tr>
+      <tr><td>rotation-acquisition-token / phase</td><td>The current lock attempt and whether it may already have changed shared state.</td></tr>
+      <tr><td>rotation-completion-token</td><td>A change has finished; other servers should reload and verify it.</td></tr>
+      <tr><td>rotation-prepared-authorities</td><td>Which replacement public identities have been prepared. Observing this marker starts the local wait.</td></tr>
+      <tr><td>rotation-pending-creates</td><td>The current unresolved creation ID for each signing slot.</td></tr>
+      <tr><td>rotation-pending-publications</td><td>Retry-stable publication identity and material, plus the permanent <code>_spire_create_recovery</code> history. That recovery record uses version 3.</td></tr>
+      <tr><td>rotation-pending-retirements</td><td>Old-key cleanup work, its replacement evidence, and the earliest allowed deletion time.</td></tr>
+      <tr><td>rotation-taint-tombstones</td><td>Public identities or key material that must stay blocked, including after a restart.</td></tr>
+    </tbody></table></div>
+    <p>Annotation names begin with <code>spire.spiffe.io/</code>. Unknown or malformed publication data is not permission to overwrite it. Mutation requires supported, validated records. Keep the Lease and its recovery history when restarting or upgrading.</p>
+    <details><summary>A few words, translated</summary><dl class="plain-glossary"><dt>SVID</dt><dd>An identity credential issued by SPIRE.</dd><dt>CA journal</dt><dd>The database history of current, prepared, and old signing authorities.</dd><dt>PREPARED / ACTIVE / OLD</dt><dd>Ready to switch to / selected for signing / previously used.</dd><dt>ARN</dt><dd>The exact address of a physical AWS key. An alias is a name that can point to a different key later.</dd><dt>JWK / JWKS</dt><dd>A public key used to verify a JWT / a set of those public keys.</dd><dt>Token or UUID</dt><dd>An attempt ID used to recognize the same work after a retry.</dd><dt>Tombstone</dt><dd>A saved “do not bring this key back” record.</dd></dl></details>
+  </section>
+  <section class="guide-section" id="migration">
+    <p class="eyebrow">Restarts and upgrades</p><h2>Reuse an existing identity without creating a second writer.</h2>
+    <ol class="reading-steps"><li>Record the complete key and journal state of the old servers. Choose the identity you will keep.</li><li>Prepare the cluster plugin with that exact effective key identifier, shared datastore, trust domain, and Lease.</li><li>Stop every old writer before starting the cluster plugin against the same aliases.</li><li>Use <code>require_existing_journal=true</code> during adoption. Verify the same key addresses, public keys, and journal are reused.</li><li>After adoption works, start the other servers. They load the same state.</li></ol>
+    <p>Rolling restarts and scale changes are expected once all servers use compatible coordinated code and the same configuration. Do not assume that older binaries understand newer saved recovery records. Moving between versions that do not understand those records needs a planned, quiesced transition.</p>
+    <p>Migration does not erase older verification keys. JWT public keys normally become eligible for pruning 24 hours after expiry, then wait for a successful six-hour cleanup pass and the consumer's next refresh. Existing taints can be backfilled; already removed historical deny information cannot be reconstructed automatically.</p>
+    <p>The new behavior is enabled by the cluster plugin and rotation lock together. Ordinary <code>aws_kms</code> does not acquire this cluster-rotation behavior when they are disabled. This is a statement about this feature's boundary, not a claim that every other custom patch disappears.</p>
+  </section>
+  <section class="guide-section" id="metrics">
+    <p class="eyebrow">Reading logs and graphs</p><h2>Count the thing you actually want to know.</h2>
+    <div class="table-wrap"><table class="reference-table"><thead><tr><th>Question</th><th>What to read</th><th>What it does not prove</th></tr></thead><tbody>
+      <tr><td>Did SPIRE ask AWS to create a key?</td><td><code>spire_server_key_manager_aws_kms_cluster_create_key_calls_total</code>, split by success, uncertain, and rejected.</td><td>The generic <code>generate_key</code> metric also includes internal lifecycle work. It is not a physical key count. A successful AWS reply does not guarantee later signer validation succeeds.</td></tr>
+      <tr><td>How much extra-attempt quota is used?</td><td><code>spire_server_ca_manager_coordinated_rotation_extra_creation_attempts_used</code> and <code>..._limit</code>.</td><td>These report the last observed durable history. The older <code>extra_creation_allowance_used</code> is only yes/no, not the count.</td></tr>
+      <tr><td>How many keys were found?</td><td><code>...aws_kms_cluster_observed_physical_keys</code> together with <code>...inventory_last_success_timestamp_seconds</code>.</td><td>The tag index can lag and include old or PendingDeletion keys. A failed scan leaves the previous count and timestamp unchanged.</td></tr>
+      <tr><td>Can this server stay ready?</td><td>Installed signer expiry, each enabled signer, chain expiry, and the separate signing/database health checks.</td><td>A long TTL alone does not prove KMS Sign or SVID requests work.</td></tr>
+    </tbody></table></div>
+    <p>“Loaded key” usually means an existing key was read into memory. “Keeping key” means discovery did not select it for that slot. Neither message by itself means a new key was created.</p>
+    <p>Creation counters begin after a call is recorded, so a scrape can miss the first increment. Prometheus increases are estimates, not a complete AWS audit. Alert delivery requires your monitoring configuration.</p>
+    <details><summary>Where this explanation comes from</summary><p>Checked against the working Go files on 15 September 2026, including local changes. The animation is a simplified example of decisions and saved state, not a reproduction of goroutine timing or a connection to a real cluster.</p><ul><li><code>pkg/server/ca/rotator/rotator_coordinated.go</code> — readiness</li><li><code>pkg/server/ca/manager/create_recovery_shared.go</code> and <code>pkg/server/rotationlock/create_recovery.go</code> — extra attempts</li><li><code>pkg/server/plugin/keymanager/awskms/shared.go</code> — search, signing, retirement</li><li><code>pkg/server/ca/manager/coordination_datastore.go</code> and <code>pkg/server/cache/dscache/cache.go</code> — fresh reads and fallback</li><li><code>pkg/server/ca/manager/jwt_publication_shared.go</code> — nested JWT publication</li><li><code>pkg/server/rotationlock/config.go</code> — names and timers</li></ul></details>
+  </section>
 
+  </details>
+<p class="footer">X.509 and JWT examples only; WIT signing is disabled here. All data is illustrative.</p>
+</main>
 <script>
 "use strict";
 
@@ -2165,7 +1053,7 @@ var TRUST_DOMAIN = "example.org";
 var DEFAULT_CLUSTER = "prod-cluster";
 var REGION = "us-west-2";
 var ACCOUNT = "123456789012";
-var DEFAULT_LEASE = "spire-server-ca-rotation-fc56a7aecf26";
+var DEFAULT_LEASE = "spire-server-ca-rotation.prod-cluster.example.org";
 var LEASE_NAMESPACE = "spire";
 
 var ANNOTATION = {
@@ -2174,6 +1062,7 @@ var ANNOTATION = {
   completionToken: "spire.spiffe.io/rotation-completion-token",
   preparedAuthorities: "spire.spiffe.io/rotation-prepared-authorities",
   pendingCreates: "spire.spiffe.io/rotation-pending-creates",
+  pendingPublications: "spire.spiffe.io/rotation-pending-publications",
   pendingRetirements: "spire.spiffe.io/rotation-pending-retirements",
   taintTombstones: "spire.spiffe.io/rotation-taint-tombstones"
 };
@@ -2237,7 +1126,7 @@ var KEY = {
   },
   K5: {
     arn: "arn:aws:kms:us-west-2:123456789012:key/5e6f7a8b-5c6d-4e45-f6a7-b8c9d0e1a7e5",
-    fingerprint: "f5ff49d767bd8be9523e75fcae2eec46324fcf232140e45eea11c7c748407b6d"
+    fingerprint: "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3"
   },
   K6: {
     arn: "arn:aws:kms:us-west-2:123456789012:key/6f7a8b9c-4d5e-4f56-a7b8-c9d0e1f2b8f6",
@@ -2506,12 +1395,19 @@ function markMutating(state, token) {
   });
 }
 
-function setPending(state, entries) {
+function setPending(state, entries, allocatedPublications) {
   traceOperation("Save the create token before CreateKey", state, function () {
     var pending = parseAnnotation(
       state.lease.annotations[ANNOTATION.pendingCreates],
       {}
     );
+    if (allocatedPublications) {
+      var publications = parseAnnotation(state.lease.annotations[ANNOTATION.pendingPublications], {});
+      Object.keys(allocatedPublications).forEach(function(keyID) {
+        publications[keyID] = clone(allocatedPublications[keyID]);
+      });
+      state.lease.annotations[ANNOTATION.pendingPublications] = JSON.stringify(publications);
+    }
     Object.keys(entries).forEach(function (keyID) {
       if (pending[keyID] && pending[keyID] !== entries[keyID]) {
         throw new Error("conflicting pending-create token");
@@ -2681,6 +1577,15 @@ function complete(state, completionToken, prepared, resolvedPendingKeyIDs, retir
         state.lease.annotations[ANNOTATION.pendingRetirements] = JSON.stringify(pendingRetirements);
       } else {
         delete state.lease.annotations[ANNOTATION.pendingRetirements];
+      }
+    }
+    if (resolvedPendingKeyIDs && resolvedPendingKeyIDs.length) {
+      var publications = parseAnnotation(state.lease.annotations[ANNOTATION.pendingPublications], {});
+      resolvedPendingKeyIDs.forEach(function(keyID) {delete publications[keyID];});
+      if (Object.keys(publications).length) {
+        state.lease.annotations[ANNOTATION.pendingPublications] = JSON.stringify(publications);
+      } else {
+        delete state.lease.annotations[ANNOTATION.pendingPublications];
       }
     }
     if (owner) {
@@ -2940,6 +1845,59 @@ function bootstrapState() {
   return state;
 }
 
+function shortExplanation(text) {
+  if (text.split(/\s+/).length <= 45) return text;
+  var sentences = text.match(/.*?[.!?](?:\s+(?=[A-Z])|$)/g);
+  return sentences && sentences.length ? sentences[0].trim() : text;
+}
+
+var plainStepText = {
+  "Start from an empty cluster": "There are no signing keys yet. The servers must load a valid signing state before they can serve.",
+  "Take the Lease for the first X.509 key": "One server takes the rotation lock. It is the only server allowed to create the first certificate-signing key.",
+  "Create x509-CA-A": "SPIRE saves an attempt ID, then asks KMS to create K1. It gives K1 a name: the X.509 A slot.",
+  "Save and finish the first X.509 key": "SPIRE saves the CA certificate and shared database record. Other servers can now find the same physical key.",
+  "Take the Lease again for the first JWT key": "JWT tokens need a separate signing key. One server takes the lock for that work.",
+  "Create JWT-Signer-A": "SPIRE saves the next attempt ID and asks KMS to create K2 for JWT signing.",
+  "Save and finish the first JWT key": "SPIRE publishes the JWT public key and saves the shared record. It then releases the lock.",
+  "Other servers load the same state": "The other servers load K1 and K2. Adding more servers does not create another pair of keys.",
+  "The prepare threshold is reached": "The current certificate is approaching its preparation time. One server takes the lock; everyone keeps signing with the current key.",
+  "Create and bind x509-CA-B": "SPIRE saves an attempt ID before asking KMS for K3. It gives K3 the B-slot alias, while the servers still use A.",
+  "Publish B before it signs": "SPIRE publishes B’s certificate so clients can learn to trust it. The database marks B as prepared: ready to switch to, but not yet signing.",
+  "Wait 20 seconds before using B": "The server that will switch to B must see its unchanged preparation record for 20 seconds. An earlier activation request is rejected.",
+  "Make B current, then start using it": "When activation is due, the owner first saves B as current in the database. Servers then reload and start signing with K3.",
+  "A forced cycle reuses slot A": "An operator requests the next rotation early. SPIRE creates K4 for slot A and records which old key it replaces. The old K1 remains enabled.",
+  "Check K4 and save K1's deletion record": "SPIRE checks the replacement and saves when K1 may be deleted. That time must allow for the old certificate’s expiry and the required update grace.",
+  "Activate A2 while K1 remains available": "After the required wait and checks, SPIRE switches to K4. K1 is kept until its saved deadline; changing the active key does not delete the old one.",
+  "A later Lease owner schedules K1 for deletion": "After the saved deadline, an owner checks the replacement and aliases again. Only then can it schedule K1 for deletion. KMS stops signing with K1 immediately.",
+  "Two callers request slot B": "Two servers want to prepare the next key at the same time. They must compete for the same rotation lock.",
+  "spire-server-2 wins the Lease": "Server 2 gets the lock. The other caller waits instead of creating another key.",
+  "The Lease owner saves B": "The owner creates and publishes one next key, then saves the completion record.",
+  "The waiting caller reloads": "The waiting caller reads the completed work and uses the key already prepared. It does not create a duplicate.",
+  "Keep one Ready server on old key K1": "One server cannot search KMS tags, but it can still use KMS Sign. Its installed certificate and chain have more than six minutes left.",
+  "Healthy servers activate B1": "Two servers switch to K3. The server that cannot reload keeps K1’s exact address and can stay ready while its validity and other checks pass.",
+  "A healthy owner moves alias A to K4": "SPIRE prepares K4 and moves the A alias to it. The slower server still signs with K1’s saved address; it does not follow the moved alias.",
+  "Save K1's deletion record; signing with K1 still works": "SPIRE saves the replacement evidence and the earliest deletion time together. K1 remains enabled, even though it no longer has an alias.",
+  "Restore KMS tag search and reload without a restart": "Tag search works again. The slower server reads the saved change and switches to the current key without restarting.",
+  "JWT B1 may become active first": "JWT keys rotate separately from X.509 keys. Their own publication checks and waiting period must pass.",
+  "A2 becomes active while K1 stays available": "The next X.509 key becomes current after the activating server’s wait. K1’s separate cleanup record stays saved.",
+  "Delete K1 after the saved time": "After the deadline, SPIRE checks the replacement, ownership, and aliases again. It schedules K1 for deletion only if the evidence still matches.",
+  "The final reload fails": "SPIRE may have saved the new key, but its final check failed. It leaves a record of the unfinished work so another server can recover it.",
+  "Save a block record before changing the bundle": "SPIRE first saves a durable “do not trust this old key again” record. A restart or older update must not bring that key back.",
+  "Start one aws_kms_cluster server with KMS writes blocked": "Start one server in adoption mode. Temporarily block key creation, alias changes, and deletion, but allow the required owner tags. Verify that it reuses the selected keys and database history."
+};
+var plainStepOutcome = {
+  "The prepare threshold is reached": "The current key keeps signing.",
+  "Publish B before it signs": "B is published before it is used for signing.",
+  "Make B current, then start using it": "The servers converge on K3 after reloading.",
+  "Check K4 and save K1's deletion record": "K1 stays enabled; the saved deadline can move later, never earlier.",
+  "A later Lease owner schedules K1 for deletion": "A scheduled key cannot sign. AWS physically removes it after seven days.",
+  "Save K1's deletion record; signing with K1 still works": "A missing alias alone does not make K1 safe to delete.",
+  "Delete K1 after the saved time": "If evidence is missing, keep the key and retry the checks later.",
+  "A healthy owner moves alias A to K4": "Moving an alias does not change a signer’s saved key address.",
+  "JWT B1 may become active first": "There is no all-server acknowledgement before activation.",
+  "The final reload fails": "Unfinished work stays remembered; valid installed signers can remain in use."
+};
+
 var SCENARIOS = [];
 
 function addScenario(group, title, summary, startingState, build) {
@@ -2959,6 +1917,8 @@ function addScenario(group, title, summary, startingState, build) {
       title: stepTitle,
       text: text,
       outcome: outcome,
+      plainText: plainStepText[stepTitle] || shortExplanation(text),
+      plainOutcome: plainStepOutcome[stepTitle] || shortExplanation(outcome),
       tone: tone || "",
       source: details.source || "Custom patch",
       actions: details.actions || null,
@@ -3229,7 +2189,7 @@ addScenario(
     step(
       "A forced cycle reuses slot A",
       "An operator starts the next preparation after B is active. SPIRE creates K4 for x509-CA-A. Before moving the alias, K4 gets spire-retire-source=K1 ARN, and K1 gets spire-retire-token=K4's create UUID.",
-      "The two tags use the same UUID. Together they prove that K4 replaced K1 during this attempt.",
+      "K1 names the replacement attempt. K4 names K1 and carries that attempt ID in its create tag. SPIRE checks these links together.",
       "",
       function (state) {
         acquire(state, 0, TOKEN.replaceA, "2026-11-10T10:00:00Z", "mutating");
@@ -3262,7 +2222,7 @@ addScenario(
     step(
       "Check K4 and save K1's deletion record",
       "SPIRE reloads the journal and KMS data. It checks that the PREPARED row for A2 uses K4, K4 has the expected create UUID and old-key ARN, and no alias points to K1. One Lease update then saves K1's future deletion record, removes x509-CA-A from rotation-pending-creates, writes the A2 prepared marker, writes the completion UUID, and releases the Lease.",
-      "The retire_after time is the later of A1's NotAfter and the current Lease time plus 125 seconds. The 125 seconds are two minutes plus the 5-second API limit. If Kubernetes asks SPIRE to retry the update, SPIRE calculates the time again and never makes it earlier. All five Lease changes are saved together, or none are saved. K1 stays Enabled.",
+      "The retire_after time is the later of A1's NotAfter and the local time of the Lease update attempt plus 125 seconds. The 125 seconds are two minutes plus the 5-second API limit. If Kubernetes asks SPIRE to retry the update, SPIRE calculates the time again and never makes it earlier. All five Lease changes are saved together, or none are saved. K1 stays Enabled.",
       "good",
       function (state) {
         complete(state, TOKEN.completion3, {x509: AUTHORITY.x509A2}, ["x509-CA-A"], [{
@@ -3302,7 +2262,7 @@ addScenario(
     );
     step(
       "A later Lease owner schedules K1 for deletion",
-      "At or after retire_after, the scheduled check first finishes any older incomplete work. If there is none, it takes the Lease and handles the oldest deletion record that is due. Before deleting K1, it checks all saved proof again: the record names x509-CA-A, K4's create UUID, and K4's public-key hash; K4 says it replaced K1; K1 has the same replacement UUID; and no alias points to K1. The normal x509-CA-A alias must point to K4 or to a later key with valid replacement tags. If any check fails, SPIRE keeps the record and does not delete K1.",
+      "After retire_after, a Lease owner can process the due deletion record. Due preparation and activation generally have priority; cleanup can run first to unblock the same pending slot. Before deleting K1, it checks all saved proof again: the record names x509-CA-A, K4's create UUID, and K4's public-key hash; K4 says it replaced K1; K1 has the same replacement UUID; and no alias points to K1. The normal x509-CA-A alias must point to K4 or to a later key with valid replacement tags. If any check fails, SPIRE keeps the record and does not delete K1.",
       "SPIRE reads K1 by full ARN, then sends one ScheduleKeyDeletion request with AWS SDK retries turned off. PendingDeletion means AWS accepted it. If the reply is an error or is missing fields, SPIRE reads K1 again by ARN. PendingDeletion or NotFound, which means the key is gone, is enough proof. Only then does a separate Lease update remove this one deletion record. SPIRE then writes normal completion data and releases the Lease. A key already PendingDeletion or missing needs no new deletion request. The seven-day KMS window is the time an operator can cancel deletion.",
       "warn",
       function (state) {
@@ -3411,8 +2371,8 @@ addScenario(
   function (step) {
     step(
       "Keep one Ready server on old key K1",
-      "Near A1 expiry, the AWS proxy blocks only KMS tag searches from spire-server-1. KMS Sign still works. The server stays Ready and keeps the full K1 ARN that it loaded earlier. It does not look up the x509-CA-A alias for each signature.",
-      "Only this server cannot reload. The other servers can rotate. Because A1 has not expired, this server can still sign with K1.",
+      "With more than six minutes of A1 validity left, the AWS proxy blocks only KMS tag searches from spire-server-1. KMS Sign still works. The server stays Ready and keeps the full K1 ARN that it loaded earlier. It does not look up the x509-CA-A alias for each signature.",
+      "Only this server cannot reload. The other servers can rotate. Its installed signer and chain still have more than six minutes left, and its other health checks pass.",
       "warn",
       function (state) {
         state.replicas[1].x509 = signer("x509-CA-A", "K1", AUTHORITY.x509A1);
@@ -3421,7 +2381,7 @@ addScenario(
         state.replicas[1].status = "Ready; KMS tag search is blocked; signer still uses K1 ARN";
       },
       {
-        source: "Live Kind and LocalStack test",
+        source: "Illustrative signing and retirement sequence",
         actions: [
           "Fault proxy: Rejects Resource Groups Tagging API GetResources only for spire-server-1's Pod IP.",
           "Fault proxy: Continues forwarding KMS Sign, including requests whose KeyId is K1's full ARN.",
@@ -3432,10 +2392,10 @@ addScenario(
     step(
       "Healthy servers activate B1",
       "After spire-server-0 has seen the B1 marker for 20 seconds, it takes the Lease. The journal marks B1 ACTIVE and A1 OLD. The final Lease update writes a completion UUID. Servers 0 and 2 load K3. Server 1 cannot search KMS tags, so it keeps K1.",
-      "Servers 0 and 2 use B1. Server 1 stays Ready on A1 until A1 expires. It keeps using K1's full ARN, so an alias change cannot switch its physical key.",
+      "Servers 0 and 2 use B1. Server 1 can stay Ready while A1 and its chain have more than six minutes left and other checks pass. It keeps using K1's full ARN, so an alias change cannot switch its physical key.",
       "good",
       function (state) {
-        acquire(state, 0, TOKEN.activateB, "2026-11-17T08:57:30Z", "mutating");
+        acquire(state, 0, TOKEN.activateB, "2026-11-17T08:50:30Z", "mutating");
         state.journal.rows[0].status = "OLD";
         state.journal.rows[2].status = "ACTIVE";
         state.journal.activeX509AuthorityId = AUTHORITY.x509B1;
@@ -3456,12 +2416,12 @@ addScenario(
       "The server that has not reloaded still sends Sign with K1's full ARN. Moving the alias cannot switch that saved signer to K4. Moving the alias also does not release the Lease or start deletion.",
       "",
       function (state) {
-        acquire(state, 0, TOKEN.replaceA, "2026-11-17T08:58:00Z", "mutating");
+        acquire(state, 0, TOKEN.replaceA, "2026-11-17T08:51:00Z", "mutating");
         setPending(state, {"x509-CA-A": TOKEN.replaceA});
         var replacementTags = createdTags(
           DEFAULT_CLUSTER,
           "x509-CA-A",
-          "1794905881",
+          "1794905461",
           TOKEN.replaceA
         );
         replacementTags["spire-retire-source"] = KEY.K1.arn;
@@ -3474,8 +2434,8 @@ addScenario(
           "A",
           AUTHORITY.x509A2,
           "PREPARED",
-          "2026-11-17T08:58:03Z",
-          "2027-02-15T08:58:03Z",
+          "2026-11-17T08:51:03Z",
+          "2027-02-15T08:51:03Z",
           "K4"
         ));
         state.trust.push(
@@ -3487,22 +2447,22 @@ addScenario(
     step(
       "Save K1's deletion record; signing with K1 still works",
       "SPIRE reloads the journal and KMS data and proves that K4 is the intended replacement. It checks K4's create UUID, public-key hash, old-key ARN, and alias, plus K1's matching tag. One Lease update then saves K1's deletion record, removes only x509-CA-A from rotation-pending-creates, writes the combined A2 and JWT-B1 prepared marker, writes the completion UUID, and releases the Lease.",
-      "On every Kubernetes update retry, SPIRE sets retire_after to the later of A1's NotAfter and the new Lease time plus 125 seconds. The saved public-key hash cannot change, and the time can move later but never earlier. All Lease changes are saved together, or none are saved. If only the Kubernetes reply is lost, all changes were still saved together. Healthy servers reload. Before retire_after, server 1 successfully issues and verifies an X.509 SVID with K1. No ScheduleKeyDeletion call happens yet.",
+      "On every Kubernetes update retry, SPIRE sets retire_after to the later of A1's NotAfter and the local time of the new Lease update attempt plus 125 seconds. The saved public-key hash cannot change, and the time can move later but never earlier. All Lease changes are saved together, or none are saved. If only the Kubernetes reply is lost, all changes were still saved together. Healthy servers reload. Before retire_after, server 1 successfully issues and verifies an X.509 SVID with K1. No ScheduleKeyDeletion call happens yet.",
       "good",
       function (state) {
         complete(state, TOKEN.completion3, {x509: AUTHORITY.x509A2, jwt: AUTHORITY.jwtB1}, ["x509-CA-A"], [{
           key_id: "x509-CA-A",
           pending_create_token: TOKEN.replaceA,
           expected_fingerprint: KEY.K4.fingerprint,
-          retire_after: 1794906008
+          retire_after: 1794906002
         }]);
-        findKey(state, "K1").note = "Enabled with no alias until 2026-11-17T09:00:08Z";
+        findKey(state, "K1").note = "Enabled with no alias until 2026-11-17T09:00:02Z";
         state.replicas[2].observedCompletion = TOKEN.completion3;
         state.replicas[2].status = "A2 and JWT B1 are published; B1 remains active";
         state.replicas[1].status = "Ready but behind; verified SVID used K1 ARN";
       },
       {
-        source: "Live Kind and LocalStack test",
+        source: "Illustrative signing and retirement sequence",
         actions: [
           "Cluster lock: In one Lease update, saves K1's deletion record (x509-CA-A, K4 create UUID, K4 public-key hash, and retire_after), removes only x509-CA-A from rotation-pending-creates, writes the combined prepared marker and completion UUID, and clears holderIdentity.",
           "AWS KMS key plugin: Leaves K1 Enabled and unaliased; phase one performs no ScheduleKeyDeletion call.",
@@ -3526,10 +2486,10 @@ addScenario(
     step(
       "JWT B1 may become active first",
       "Server 2 has also seen the JWT B1 marker for 20 seconds. It marks JWT B1 ACTIVE and JWT A1 OLD, and all servers load K5. Its final Lease update keeps only A2 in the prepared marker and does not change K1's deletion record.",
-      "The test accepts either safe order: JWT B1 can become active before A2, or A2 can become active first. Each one must complete its own 20-second wait. When one becomes active, the other gets a new marker and starts a new 20-second wait.",
+      "Either safe order is possible: JWT B1 can become active before A2, or A2 can become active first. Each one must complete its own 20-second wait. When one becomes active, the other gets a new marker and starts a new 20-second wait.",
       "good",
       function (state) {
-        acquire(state, 2, TOKEN.activateJWTB, "2026-11-17T08:58:30Z", "mutating");
+        acquire(state, 2, TOKEN.activateJWTB, "2026-11-17T08:51:30Z", "mutating");
         state.journal.rows[1].status = "OLD";
         state.journal.rows[3].status = "ACTIVE";
         complete(state, TOKEN.completionJWTActive, {x509: AUTHORITY.x509A2}, false);
@@ -3546,11 +2506,11 @@ addScenario(
     );
     step(
       "A2 becomes active while K1 stays available",
-      "After every healthy server has seen the new A2 marker for 20 seconds, one owner makes A2 active and all servers load K4. The final Lease update does not remove K1's saved deletion record.",
+      "After the activating server has seen the unchanged A2 marker for 20 seconds, one owner makes A2 active and all servers load K4. The final Lease update does not remove K1's saved deletion record.",
       "New X.509 credentials now use A2 and K4. K1 stays Enabled with no alias until retire_after. Making the new key active and deleting the old key are separate steps.",
       "good",
       function (state) {
-        acquire(state, 0, TOKEN.activateA2, "2026-11-17T08:58:55Z", "mutating");
+        acquire(state, 0, TOKEN.activateA2, "2026-11-17T08:51:55Z", "mutating");
         state.journal.rows[4].status = "ACTIVE";
         state.journal.rows[2].status = "OLD";
         state.journal.activeX509AuthorityId = AUTHORITY.x509A2;
@@ -3568,8 +2528,8 @@ addScenario(
     );
     step(
       "Delete K1 after the saved time",
-      "At or after 09:00:08Z, the scheduled check first finishes older incomplete work. If none exists, it handles the oldest deletion record that is due and takes the Lease. This example uses spire-server-0. Before deleting K1, SPIRE rechecks K4's logical key ID, create UUID, public-key hash, and spire-retire-source=K1; K1's matching spire-retire-token; and every alias. The normal alias must point to K4 or a later key with valid replacement tags. If any check fails, SPIRE keeps the record and leaves K1 alone.",
-      "The test expects one ScheduleKeyDeletion call for K1, with AWS SDK retries turned off. PendingDeletion means AWS accepted it. For an error or incomplete reply, SPIRE reads K1 by full ARN; PendingDeletion or NotFound, which means the key is gone, proves the operation finished. SPIRE then removes only this saved record in a separate Lease update and releases the Lease. If K1 is already PendingDeletion or missing, it sends no deletion request. If AWS still gives no clear answer, the record stays for a later owner. The earliest deletion time is 125 seconds after replacement, longer than the roughly 110 seconds needed for repeated reload failures to mark a server unready.",
+      "After 09:00:02Z, an owner can handle this due record. Due preparation and activation generally have priority over cleanup. This example uses spire-server-0. Before deleting K1, SPIRE rechecks K4's logical key ID, create UUID, public-key hash, and spire-retire-source=K1; K1's matching spire-retire-token; and every alias. The normal alias must point to K4 or a later key with valid replacement tags. If any check fails, SPIRE keeps the record and leaves K1 alone.",
+      "This example makes one ScheduleKeyDeletion call for K1, with AWS SDK retries turned off. PendingDeletion means AWS accepted it. For an error or incomplete reply, SPIRE reads K1 by full ARN; PendingDeletion or NotFound, which means the key is gone, proves the operation finished. SPIRE then removes only this saved record in a separate Lease update and releases the Lease. If K1 is already PendingDeletion or missing, it sends no deletion request. If AWS still gives no clear answer, the record stays for a later owner. The saved deadline is the later of the old authority expiry and the Lease-update grace. Readiness depends on installed signer validity, not a count of reload errors.",
       "warn",
       function (state) {
         acquire(state, 0, TOKEN.retireK1, "2026-11-17T09:00:10Z", "mutating");
@@ -3621,9 +2581,9 @@ addScenario(
         state.replicas[0].ready = false;
         state.replicas[0].leaseHolder = false;
         state.replicas[0].status = "Process stopped";
-        state.replicas[1].ready = false;
-        state.replicas[2].ready = false;
-        state.replicas[1].status = "Completion missing; existing signer kept";
+        state.replicas[1].ready = true;
+        state.replicas[2].ready = true;
+        state.replicas[1].status = "Completion missing; valid existing signer kept";
         state.replicas[2].status = "Waiting for the Lease to stay unchanged for 30 seconds";
       },
       {
@@ -3682,7 +2642,7 @@ addScenario(
 addScenario(
   "Recovery",
   "CreateKey succeeds but its response is lost",
-  "The rotation-pending-creates entry prevents a retry from creating a second physical key.",
+  "SPIRE first searches for the saved attempt. In this example it finds the key before another creation becomes eligible.",
   steadyState(),
   function (step) {
     step(
@@ -3734,7 +2694,7 @@ addScenario(
     step(
       "Recovery keeps the unfinished K9 record",
       "A new owner fixes the Lease ownership fields and writes a completion UUID. It leaves JWT-Signer-B in rotation-pending-creates because tag search has not found K9 yet.",
-      "A later EnsureKey call must not call CreateKey for JWT-Signer-B.",
+      "A retry must first look for this saved attempt. The one-hour observation and durable extra-attempt rules still apply.",
       "",
       function (state) {
         acquire(state, 0, TOKEN.recovery, "2026-10-01T11:00:34Z", "recovering");
@@ -3744,11 +2704,11 @@ addScenario(
     );
     step(
       "A retry sees no tag result",
-      "The KMS tag search still finds no key. Because the saved create token exists, the retry stops instead of creating another key.",
+      "The KMS tag search still finds no key. The extra-attempt waiting requirements have not been met, so this retry stops instead of creating another key.",
       "The cluster still has three physical keys. No extra key is created.",
       "bad",
       function (state) {
-        state.replicas[0].status = "Create forbidden until discovery identifies the prior attempt";
+        state.replicas[0].status = "Waiting for discovery or eligibility for one bounded extra attempt";
       },
       {
         actions: [
@@ -3942,7 +2902,7 @@ addScenario(
     );
     step(
       "A restarted server finds the original journal",
-      "The restarted server lists all SPIRE-tagged KMS keys, not only alias targets. It finds K1 and the existing journal, so it does not treat the cluster as empty.",
+      "The restarted server lists the KMS keys tagged for this cluster, not only alias targets. It finds K1 and the existing journal, so it does not treat the cluster as empty.",
       "No second journal and no new KMS key are created.",
       "",
       function (state) {
@@ -4182,7 +3142,7 @@ addScenario(
 );
 
 function migrationState() {
-  var state = baseState("prod-server-0", "spire-server-ca-rotation-090a8b05521c");
+  var state = baseState("prod-server-0", "spire-server-ca-rotation.prod-server-0.example.org");
   state.lease.exists = false;
   state.lease.resourceVersion = "";
   state.scope.plugin = "aws_kms";
@@ -4358,16 +3318,16 @@ addScenario(
     );
     step(
       "Create the Lease and prepare the new settings",
-      "Create spire-server-ca-rotation-090a8b05521c while the last standard SPIRE server is still running. Prepare aws_kms_cluster with cluster_id and key_identifier_value set to prod-server-0, but do not start it.",
+      "Create spire-server-ca-rotation.prod-server-0.example.org while the last standard SPIRE server is still running. Prepare aws_kms_cluster with key_identifier_value set to prod-server-0, but do not start it.",
       "The new settings are ready, but no aws_kms_cluster server is running yet. The old server is still serving requests.",
       "",
       function (state) {
-        state.lease = newLease("spire-server-ca-rotation-090a8b05521c");
+        state.lease = newLease("spire-server-ca-rotation.prod-server-0.example.org");
       },
       {
         source: "Kubernetes operator",
         actions: [
-          "Operator: Creates the empty spire/spire-server-ca-rotation-090a8b05521c Lease.",
+          "Operator: Creates the empty spire/spire-server-ca-rotation.prod-server-0.example.org Lease.",
           "Operator: Prepares the aws_kms_cluster configuration but does not start it yet."
         ]
       }
@@ -4471,127 +3431,13 @@ addScenario(
 
 addScenario(
   "Operations",
-  "Lease and dependency failures",
-  "When the Lease, database, or KMS cannot be checked safely, rotation stops without creating a second key.",
-  steadyState(),
-  function (step) {
-    step(
-      "The Lease is missing or has invalid values",
-      "When allow_lease_creation=false, an operator must create the Lease before SPIRE starts. When it is true and Kubernetes allows it, SPIRE may create a missing Lease. Every JSON annotation must be valid, and the UUID in rotation-acquisition-phase must match rotation-acquisition-token.",
-      "The servers stay unready. They do not change KMS or the database.",
-      "bad",
-      function (state) {
-        state.lease = newLease(DEFAULT_LEASE);
-        state.lease.exists = false;
-        state.lease.resourceVersion = "";
-        state.replicas.forEach(function (replica) {
-          replica.ready = false;
-          replica.status = "Startup rejected before rotation";
-        });
-      },
-      {
-        source: "Deployment input and custom patch",
-        actions: [
-          "Startup problem: The required Lease is missing and SPIRE cannot create it, or the Lease contains values that do not make sense together.",
-          "Startup result: Every server stays unready. The patch stops before changing KMS or the database."
-        ]
-      }
-    );
-    step(
-      "Lease read or update permission is removed",
-      "After startup, Kubernetes access to the Lease is removed. The scheduled check runs every 10 seconds, and each check fails because the servers cannot read or update the Lease.",
-      "The first ten failures do not make the servers unready. They keep issuing with the K1 and K2 full ARNs. The processes stay live.",
-      "warn",
-      function (state) {
-        state.lease = newLease(DEFAULT_LEASE);
-        state.lease.leaseDurationSeconds = "30";
-        state.lease.acquireTime = "2026-08-19T09:00:24Z";
-        state.lease.renewTime = "2026-08-19T09:00:25Z";
-        state.lease.leaseTransitions = 2;
-        state.lease.resourceVersion = "12010";
-        state.lease.annotations[ANNOTATION.completionToken] = TOKEN.completion0;
-        state.replicas.forEach(function (replica) {
-          replica.ready = true;
-          replica.status = "Lease check is failing; still using the saved signer";
-        });
-      },
-      {
-        source: "Kubernetes RBAC and custom patch",
-        actions: [
-          "Kubernetes permissions: This scenario removes permission to read or update the Lease. The custom patch does not make that change.",
-          "Health check: Counts each failed Lease check. For the first ten failures, the servers keep their signers and stay ready and live."
-        ]
-      }
-    );
-    step(
-      "The eleventh scheduled check fails",
-      "After about 110 seconds of continuous failure, the coordinated rotation health threshold is exceeded.",
-      "The servers report Not Ready. No signer, journal row, key, alias, or completion UUID changes.",
-      "bad",
-      function (state) {
-        state.replicas.forEach(function (replica) {
-          replica.ready = false;
-          replica.status = "Lease check failed 11 times; still holding the saved signer";
-        });
-      }
-    );
-    step(
-      "The database or KMS tag search is unavailable",
-      "The server cannot read a trustworthy CA journal or a complete list of SPIRE-tagged KMS keys.",
-      "It does not create the first keys, reuse existing keys, prepare or activate a key, taint an authority, or revoke an authority. Key and completion counts stay unchanged.",
-      "bad"
-    );
-    step(
-      "The Lease owner loses the lock while changing data",
-      "After the dependencies recover, a Lease renewal fails. The old owner records the loss before loading any new signer. Another server waits until the Lease stays unchanged for 30 seconds, takes it, and reloads the saved recovery data.",
-      "The new owner finishes the prior work. The old owner cannot load out-of-date state.",
-      "warn",
-      function (state) {
-        state.replicas.forEach(function (replica) {
-          replica.ready = true;
-        });
-        acquire(state, 0, TOKEN.aliasRetry, "2026-08-21T09:00:00Z", "mutating");
-        state.replicas[0].ready = false;
-        state.replicas[0].status = "Lease renewal failed; signer load blocked";
-        acquire(state, 1, TOKEN.recovery, "2026-08-21T09:00:32Z", "recovering");
-        state.replicas[1].status = "New owner is finishing the previous work";
-      },
-      {
-        source: "Kubernetes Lease and custom patch",
-        actions: [
-          "Old owner: Detects that it can no longer renew the Lease. It stops before loading a signer and becomes unready.",
-          "Next owner: Waits until the Lease has stayed unchanged for 30 seconds, then takes it with a new recovery token.",
-          "Next owner: Reloads the saved recovery data before changing anything."
-        ]
-      }
-    );
-    step(
-      "Restore the dependency and reload",
-      "A valid owner finishes recovery and writes a new completion UUID. Every server reloads before it reports Ready.",
-      "K1 and K2 remain the shared keys. The outage did not create another key.",
-      "good",
-      function (state) {
-        complete(state, TOKEN.completion3, {}, false);
-        state.replicas.forEach(function (replica) {
-          replica.ready = true;
-          replica.leaseHolder = false;
-          replica.observedCompletion = TOKEN.completion3;
-          replica.status = "Dependency restored; state reloaded";
-        });
-      }
-    );
-  }
-);
-
-addScenario(
-  "Operations",
   "Restart, scale, and cluster isolation",
-  "New servers load the saved keys and journal. A server cluster with a different cluster ID cannot use these keys.",
+  "New servers load the saved keys and journal. A cluster with a different identifier does not adopt these keys. AWS IAM controls access.",
   steadyState(),
   function (step) {
     step(
       "Scale from three servers to five",
-      "The two new servers read the same completion UUID, aliases, all SPIRE-tagged KMS keys, journal, and bundle.",
+      "The two new servers read the same completion UUID, aliases, the KMS keys tagged for this cluster, journal, and bundle.",
       "They load K1 and K2 by full ARN. They do not call CreateKey or change an alias.",
       "good",
       function (state) {
@@ -4649,7 +3495,7 @@ addScenario(
       "prod-cluster never treats peer-cluster keys as its own keys.",
       "",
       function (state) {
-        var peerLease = newLease("spire-server-ca-rotation-8580bdc0c866");
+        var peerLease = newLease("spire-server-ca-rotation.peer-cluster.example.org");
         peerLease.scope = "peer-cluster";
         peerLease.resourceVersion = "88001";
         peerLease.leaseDurationSeconds = "30";
@@ -4689,20 +3535,20 @@ addScenario(
         source: "Independent peer cluster",
         actions: [
           "peer-cluster: Has its own Lease, completion token, K7 and K8 tags, and aliases. peer-cluster wrote those values.",
-          "prod-cluster: Sees those keys in the shared AWS account but ignores them because their tags and alias names say peer-cluster."
+          "prod-cluster: Searches its own tag scope and filters alias names. The picture includes peer keys only to explain ownership; it is not the output of a shared account-wide key scan."
         ]
       }
     );
     step(
-      "Different cluster IDs are rejected",
-      "If ca_rotation_lock.cluster_id and the aws_kms_cluster key identifier are different, startup stops before loading the plugin or changing data.",
-      "A server using one Lease cannot change aliases that belong to a different cluster ID.",
-      "bad",
+      "One shared identifier in the configuration",
+      "The cluster identity comes from aws_kms_cluster.key_identifier_value. All replicas must use the same value and Lease. There is no second cluster_id setting to compare.",
+      "Do not split one cluster across different identifiers or point unrelated clusters at the same Lease.",
+      "warn",
       null,
       {
         actions: [
-          "Startup check: Compares ca_rotation_lock.cluster_id with the aws_kms_cluster key identifier.",
-          "Startup check: If they are different, stops before configuring the plugin or taking the Lease."
+          "Configuration: Derives the cluster identity from the fixed key identifier.",
+          "Configuration: Validates that identifier as a DNS label and derives the default Lease name from it and the trust domain."
         ]
       }
     );
@@ -4711,8 +3557,8 @@ addScenario(
 
 addScenario(
   "Operations",
-  "Delete keys from a cluster that no longer exists",
-  "The spire-last-update tag shows when a cluster last checked its keys. A background job can schedule very old keys from a stopped cluster for deletion. Operators still have seven days to cancel.",
+  "Keys left by a stopped cluster",
+  "Another cluster may leave enabled keys behind. This plugin does not automatically delete them. The picture includes those foreign keys to explain ownership.",
   steadyState(),
   function (step) {
     step(
@@ -4742,63 +3588,31 @@ addScenario(
         source: "Abandoned foreign cluster",
         actions: [
           "old-cluster: Previously created K7, K8, and their aliases.",
-          "prod-cluster: Makes no change in this step. It only sees that the keys are old and belong to another cluster."
+          "prod-cluster: Makes no change to the foreign keys. They are included in this illustration, not discovered through this cluster's tag filter."
         ]
       }
     );
     step(
-      "The running cluster updates its own timestamps",
-      "Every six hours, prod-cluster checks that each tagged key belongs to it and updates spire-last-update, including old keys that are not loaded in memory. It skips keys that already have a saved normal deletion record.",
-      "The cleanup job cannot mistake K1 or K2 for keys from a stopped cluster.",
-      "good",
+      "Only refresh this cluster's ownership timestamps",
+      "The running cluster refreshes its own retained-key timestamps. It does not claim ownership of the stopped cluster's keys.",
+      "A timestamp is a clue for review, not permission to delete a key.",
+      "",
       function (state) {
         findKey(state, "K1").tags["spire-last-update"] = "1794578400";
         findKey(state, "K2").tags["spire-last-update"] = "1794578400";
       }
     );
     step(
-      "The cleanup job checks the old-cluster keys",
-      "Every 48 hours, the job reads each possible old key by full ARN. It checks the KMS state, all tags, key age, owning cluster ID, and every alias.",
-      "old-cluster must remain stopped, and no new cluster may reuse its ID. If the key's history, tags, alias, or normal deletion record is unclear, the job leaves it unchanged for an operator to review.",
-      "",
-      null,
-      {
-        actions: [
-          "Cleanup job: Every 48 hours, reads each possible old key by its full ARN.",
-          "Cleanup job: Checks the KMS state, all tags, key age, owner cluster ID, and every alias that points to the key.",
-          "Cleanup job: Leaves the key unchanged if its SPIRE tags are missing or disagree, or if an unexpected alias points to it.",
-          "Cleanup job: Also leaves it unchanged if the cluster ID may have been reused or the key may still be needed."
-        ]
-      }
+      "Leave the other cluster's keys alone",
+      "aws_kms_cluster has no automatic collector that deletes other clusters' keys. Old tags or a missing alias are not enough proof that a key is unused.",
+      "K7 and K8 stay Enabled. This cluster sends no deletion request for them.",
+      "warn"
     );
     step(
-      "Check old-cluster aliases, then schedule K7 and K8",
-      "After repeated checks, the job allows only the expected old-cluster aliases. It calls ScheduleKeyDeletion once for K7 and K8 with a seven-day window and leaves the aliases in place.",
-      "Both keys enter PendingDeletion immediately. Their old-cluster aliases still name them; prod-cluster aliases and keys are unchanged.",
-      "warn",
-      function (state) {
-        findKey(state, "K7").state = "PendingDeletion";
-        findKey(state, "K7").deletionDate = "2026-11-22T14:00:00Z";
-        findKey(state, "K7").note = "Old-cluster key; expected alias checked";
-        findKey(state, "K8").state = "PendingDeletion";
-        findKey(state, "K8").deletionDate = "2026-11-22T14:00:01Z";
-        findKey(state, "K8").note = "Old-cluster key; expected alias checked";
-        state.counters.scheduleDeletion += 2;
-      }
-    );
-    step(
-      "Check AWS after an unclear deletion response",
-      "If ScheduleKeyDeletion returns an error after AWS may have accepted it, the job reads the key again by full ARN. PendingDeletion means deletion is scheduled. NotFound means the key is already gone. Any other state is still an error.",
-      "The checks and the deletion request are separate actions, so state can change between them. SPIRE does not cancel deletion. An operator must monitor the key and can cancel an unsafe schedule during the seven-day window.",
-      "good",
-      null,
-      {
-        actions: [
-          "Cleanup job: If the deletion response is unclear, reads the key again by its full ARN.",
-          "Cleanup job: PendingDeletion means the key is scheduled for deletion. NotFound means the key is already gone.",
-          "Cleanup job: Either result needs no second deletion request. Any other result is reported for an operator to review."
-        ]
-      }
+      "Review before cleaning up",
+      "An operator must check the owning deployment, all saved signers and recovery records, the aliases, and any remaining need for the keys before separately scheduling deletion.",
+      "Scheduling deletion stops KMS signing immediately; the seven-day window delays physical removal.",
+      "warn"
     );
   }
 );
@@ -4836,11 +3650,150 @@ addScenario(
   }
 );
 
+// Example state for the new recovery, outage, and nested-cluster stories.
+// This page never calls Kubernetes, a database, or AWS.
+function exampleToken(number) {
+  return "00000000-0000-4000-8000-" + String(number).padStart(12, "0");
+}
+
+function storyStatus(state, rotation, signing, focus, note) {
+  state.story = Object.assign({}, state.story, {rotation: rotation, signing: signing, focus: focus, note: note});
+}
+
+function spendExampleAttempt(state, previous, replacement) {
+  var publications = JSON.parse(state.lease.annotations[ANNOTATION.pendingPublications] || "{}");
+  var history = publications._spire_create_recovery || {v: 3, attempts: []};
+  if (history.attempts.length >= 10) throw new Error("Example must not exceed the durable limit");
+  history.attempts.push({key_id: "JWT-Signer-B", previous_token: previous, replacement_token: replacement});
+  publications._spire_create_recovery = history;
+  if (publications["JWT-Signer-B"]) {
+    if (publications["JWT-Signer-B"].state !== "allocated" || publications["JWT-Signer-B"].token !== previous) {
+      throw new Error("Cannot replace a sealed or mismatched publication");
+    }
+    publications["JWT-Signer-B"].token = replacement;
+  }
+  state.lease.annotations[ANNOTATION.pendingPublications] = JSON.stringify(publications);
+  state.lease.annotations[ANNOTATION.pendingCreates] = JSON.stringify({"JWT-Signer-B": replacement});
+  bumpLeaseVersion(state);
+}
+
+addScenario("Recovery", "One extra attempt, then a late old key", "A lost reply is not permission to create keys forever. Watch the saved quota and the old attempt ID.", steadyState(), function(step) {
+  step("Remember attempt A", "SPIRE saves the attempt ID, JWT public-key ID, and lifetime before asking KMS for the next key. The reply is lost. The current signers stay installed.", "The result is uncertain; keep looking for the same attempt.", "warn", function(s) {
+    acquire(s, 0, exampleToken(100), "2026-10-01T09:00:00Z", "mutating");
+    setPending(s, {"JWT-Signer-B": exampleToken(101)}, {
+      "JWT-Signer-B": {v:1, token:exampleToken(101), state:"allocated", kind:"jwt", kid:AUTHORITY.jwtB1, issued_at:1790845200, not_after:1798621200}
+    });
+    addKey(s, "K9", "JWT-Signer-B", createdTags(DEFAULT_CLUSTER, "JWT-Signer-B", "1790845200", exampleToken(101)), "AWS created this key, but its reply and tag-search result are not yet available to SPIRE.");
+    s.replicas.forEach(function(r) {r.leaseHolder = false;});
+    s.lease.holderIdentity = "";
+    bumpLeaseVersion(s);
+    storyStatus(s, "Waiting for a clear result", "Current keys still work", "kms", "The picture knows the key exists. SPIRE does not yet have that evidence.");
+  });
+  step("First complete empty search", "SPIRE successfully reads every page of the filtered tag search. No visible key matches attempt A. This starts a local waiting timer.", "No extra creation is allowed yet.", "warn", function(s) {storyStatus(s, "Wait at least one hour", "Current keys still work", "kms", "An empty tag index is not proof that the key does not exist.");});
+  step("One hour later: search again", "After at least one hour, another complete search for the same attempt is also empty. Failed or partial searches do not count as either successful search.", "One extra attempt can now be authorized while holding the Lease.", "", function(s) {storyStatus(s, "Extra attempt is eligible", "Current keys still work", "lease", "The hour is skipped in the animation; it is a real wait in SPIRE.");});
+  step("Save attempt B before calling AWS", "The Lease permanently remembers A and B together. One of the cluster's ten extra authorizations is now spent, even if the server crashes before sending the request.", "Quota used: 1 of 10. A is remembered as an old attempt.", "warn", function(s) {
+    acquire(s, 1, exampleToken(102), "2026-10-01T10:00:01Z", "recovering");
+    spendExampleAttempt(s, exampleToken(101), exampleToken(103));
+    storyStatus(s, "One extra attempt saved", "Current keys still work", "lease", "Saving the quota and updating both the creation and publication tokens happen together. The public-key ID and lifetime stay unchanged.");
+  });
+  step("Save B's exact public key before publishing", "KMS returns K5 for attempt B. SPIRE checks it and saves the exact public-key bytes in the publication record. This is called sealing the record.", "Retries reuse these bytes and the public-key ID already saved for A. The spent quota is not refunded.", "good", function(s) {
+    markMutating(s, exampleToken(102));
+    addKey(s, "K5", "JWT-Signer-B", createdTags(DEFAULT_CLUSTER, "JWT-Signer-B", "1790848802", exampleToken(103)));
+    setAlias(s, "JWT-Signer-B", "K5");
+    var publications = parseAnnotation(s.lease.annotations[ANNOTATION.pendingPublications], {});
+    publications["JWT-Signer-B"].state = "sealed";
+    publications["JWT-Signer-B"].pkix_der = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li/hp/m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q==";
+    publications["JWT-Signer-B"].normalized_pkix_sha256 = KEY.K5.fingerprint;
+    s.lease.annotations[ANNOTATION.pendingPublications] = JSON.stringify(publications);
+    bumpLeaseVersion(s);
+    storyStatus(s, "Public material saved", "Current keys still work", "lease", "Once sealed, this publication cannot be swapped for another creation attempt.");
+  });
+  step("Publish and finish B", "SPIRE publishes the saved public material, reads fresh trust to check it, and saves B as the prepared signer. It clears the completed publication and creation records, but keeps the recovery history.", "B is prepared. The quota still shows one spent extra authorization.", "good", function(s) {
+    s.journal.rows.push(journalRow(s.journal.selectedId, "JWT", "B", AUTHORITY.jwtB1, "PREPARED", "2026-10-01T09:00:00Z", "2026-12-30T09:00:00Z", "K5"));
+    s.trust.push(trustRow("JWT JWK", AUTHORITY.jwtB1, "published", "Normal expiry, pruning, or explicit revoke"));
+    complete(s, exampleToken(104), {jwt: AUTHORITY.jwtB1}, ["JWT-Signer-B"]);
+    storyStatus(s, "Replacement prepared", "Current keys still work", "database", "The allocated ID and lifetime survived the changed creation attempt. Detailed Lease history remains below.");
+  });
+  step("A becomes visible later", "The tag search finally returns A's key. The saved history says A was replaced. SPIRE leaves that key unused for operator review.", "No alias move, no adoption, and no automatic deletion of the late key.", "warn", function(s) {
+    findKey(s, "K9").note = "Late key from superseded attempt A. Retained unused for operator review.";
+    storyStatus(s, "No new work needed", "Current keys still work", "kms", "An unexpected alias pointing at this old attempt blocks adoption; SPIRE does not silently repair it.");
+  });
+  step("Restart the servers", "The servers read the same saved history when they start again. The counter is still one, and A is still blocked from adoption.", "Restart resets local observation waits, not the durable quota.", "good", function(s) {
+    s.replicas.forEach(function(r, i) {r.bootId = exampleToken(110 + i); r.status = "Reloaded the retained history and installed signers";});
+    storyStatus(s, "Recovery history retained", "Current keys still work", "lease", "The Lease must be preserved across restarts.");
+  });
+});
+
+addScenario("Recovery", "All ten extra attempts have been spent", "The limit applies to extra recovery authorizations over retained cluster history, not to the number of normal rotations.", steadyState(), function(step) {
+  step("Ten separate extra authorizations were saved", "This example skips a long period of repeated uncertainty. Each extra authorization required its own complete searches and waiting period. Some calls may have been rejected or never sent after a crash.", "The retained history contains ten entries. It does not prove ten physical keys exist.", "warn", function(s) {
+    for (var n=0;n<10;n++) spendExampleAttempt(s, exampleToken(200+n), exampleToken(201+n));
+    storyStatus(s, "Extra creation limit reached", "Current keys still work", "lease", "This example begins after the quota is spent; it does not spend ten attempts instantly.");
+  });
+  step("Another empty search cannot authorize number eleven", "SPIRE reports the exhausted limit in warning logs and metrics. An external monitoring rule must send the alert.", "No further replacement creation is authorized.", "warn", function(s) {storyStatus(s, "Operator review needed", "Current keys still work", "lease", "No restart, completed rotation, or empty search refills these ten slots.");});
+  step("The current pending key appears", "SPIRE still searches for the current pending attempt before checking whether another replacement is allowed. If its key appears and passes validation, it can finish that existing work.", "Reusing the pending key does not spend an eleventh attempt.", "good", function(s) {
+    addExistingKey(s, "K5", "JWT-Signer-B", createdTags(DEFAULT_CLUSTER, "JWT-Signer-B", "1790848802", exampleToken(210)), "Previously created key becomes visible; no new CreateKey call in this step.");
+    storyStatus(s, "Existing key can be recovered", "Current keys still work", "kms", "Normal successful rotations are not capped at ten keys. Further uncertain replacements remain blocked.");
+  });
+});
+
+addScenario("Operations", "Rotation pauses while signing keeps working", "These examples start from an initialized server with valid installed keys. Watch rotation and signing separately.", steadyState(), function(step) {
+  step("Everything is working", "The servers share K1 and K2 and have plenty of validity left. Every server can send signing requests to KMS.", "No rotation lock is needed for each signature.", "good", function(s) {storyStatus(s, "Available", "Working", "servers", "The current signers have far more than six minutes left.");});
+  step("The Kubernetes API is unavailable", "SPIRE cannot safely take or renew the rotation lock. It pauses shared changes. It keeps the already installed keys.", "Rotation errors alone do not make the servers unready.", "warn", function(s) {storyStatus(s, "Paused: Lease API unavailable", "Working if other checks pass", "lease", "No new key or shared-state change is guessed during the outage.");});
+  step("Many rotation checks fail", "The Lease API is still unavailable. The installed signers still have enough validity. There is no rule that evicts the server after eleven rotation errors.", "Ready can remain true; separate dependency health checks still apply.", "warn", function(s) {storyStatus(s, "Still paused", "Working if other checks pass", "servers", "Rotation error count is a diagnostic, not the readiness decision.");});
+  step("Only KMS key discovery is unavailable", "In this separate case, KMS tag searches fail but KMS Sign still works. Reload cannot replace the installed signer with incomplete data.", "The server can keep signing through the exact key address already loaded.", "warn", function(s) {storyStatus(s, "Paused: key discovery unavailable", "KMS Sign still works", "kms", "Searching for a key and using a known key to sign are different AWS operations.");});
+  step("KMS Sign itself becomes unavailable", "Now KMS cannot make the signature. Having a valid key address in memory does not replace the KMS service.", "New signing requests can fail; the signing health check can fail readiness and liveness.", "bad", function(s) {
+    s.replicas.forEach(function(r) {r.ready=false;r.status="KMS signing requests fail";});
+    storyStatus(s, "Paused", "New signatures can fail", "kms", "An enabled key in the console is not proof that a signing request will succeed.");
+  });
+  step("Only five minutes of signer validity remain", "Consider a separate prolonged rotation outage with KMS Sign available again. An installed signer now has only five minutes left.", "The coordinated readiness check fails before expiry because it requires more than six minutes.", "bad", function(s) {
+    s.replicas.forEach(function(r) {r.ready=false;r.status="Less than the required signer validity remains";});
+    storyStatus(s, "Renewal still needed", "Readiness no longer passes", "servers", "Example time: 17 November at 08:55:02 UTC. The X.509 certificate in the records expires five minutes later.");
+  });
+  step("Recovery needs a usable signer", "Dependencies alone are not enough: SPIRE must also load a signer with enough validity and pass every separate health check. This last step returns to the earlier healthy snapshot to summarize those requirements.", "A rotation outage did not reset the shared keys or erase recovery history.", "good", function(s) {
+    s.replicas.forEach(function(r) {r.ready=true;r.status="Valid signers loaded; dependency checks restored";});
+    storyStatus(s, "Available again", "Working", "servers", "Startup without loaded keys is different from this steady-state recovery.");
+  });
+});
+
+addScenario("Operations", "The database is down: cached trust is not approval", "An old bundle can help some serving requests. Rotation and publication need a fresh database read.", steadyState(), function(step) {
+  step("A previously fetched bundle is available", "The server has installed keys and a bundle from a successful earlier database read.", "The cached copy is useful for some ordinary reads.", "good", function(s) {storyStatus(s, "Available", "Working", "database", "A bundle is the public trust used to verify identities.");});
+  step("A database read fails", "Ordinary bundle reads may use the retained copy if it is less than 96 hours old. Other requests may still require the database.", "Cached trust does not guarantee that all SVID requests succeed.", "warn", function(s) {storyStatus(s, "Paused: fresh read failed", "Depends on request and DB grace", "database", "An ordinary cached read does not renew the database health grace period.");});
+  step("Do not approve the next key from the old copy", "Rotation bypasses the cached fallback. The bundle publisher also skips an upload if its required fresh database read fails.", "No stale bundle is accepted as proof that the new key is safely published.", "warn", function(s) {storyStatus(s, "Fresh confirmation required", "Installed keys unchanged", "database", "No new public identity, alias, or completion marker is invented here.");});
+  step("The separate database grace runs out", "Database health counts from the last successful uncached health read. If its configured grace expires, readiness and liveness can fail. Zero grace provides no outage allowance.", "The 96-hour bundle cache does not extend this deadline.", "bad", function(s) {
+    s.replicas.forEach(function(r) {r.ready=false;r.status="Separate database health grace expired";});
+    storyStatus(s, "Waiting for the database", "Overall health can fail", "database", "No earlier successful database health check means there is no grace to use.");
+  });
+  step("Fresh data is available again", "SPIRE reads the current bundle, checks durable blocked-key records, and resumes unfinished work. An older snapshot cannot bring a blocked key back.", "Recovery uses current evidence before changing public trust.", "good", function(s) {
+    s.replicas.forEach(function(r) {r.ready=true;r.status="Fresh data and dependency health restored";});
+    storyStatus(s, "Can resume after checks", "Working if all checks pass", "database", "A fresh database read is not an atomic transaction with a later external upload.");
+  });
+});
+
+function nestedExampleState() {
+  var state=steadyState();
+  state.scope.clusterId="sub-01";state.scope.keyIdentifier="sub-01";
+  state.lease.name="spire-server-ca-rotation.sub-01.example.org";
+  state.keys.forEach(function(k){k.tags["spire-server-id"]="sub-01";});
+  state.aliases.forEach(function(a){a.alias=a.alias.replace("/"+DEFAULT_CLUSTER+"/","/sub-01/");});
+  state.relatedLeases=[newLease("spire-server-ca-rotation.root.example.org"),newLease("spire-server-ca-rotation.sub-02.example.org")];
+  state.relatedLeases[0].scope="root";state.relatedLeases[1].scope="sub-02";
+  state.story={nested:true,rootPublicKeys:1,rootKeysCreated:0,focus:"root"};
+  return state;
+}
+addScenario("Nested clusters", "Root and two subordinates", "Each cluster has its own keys. The root helps establish trust in its children.", nestedExampleState(), function(step) {
+  step("Three independent sets of private keys", "The root, subordinate 01, and subordinate 02 each use their own cluster ID, KMS keys, and Lease. The detailed records below follow subordinate 01.", "Adding a child does not give it the root's private key.", "good", function(s) {storyStatus(s,"Independent rotation in each cluster","Existing child signers work","root","The root may itself use AWS PCA or another upstream.");});
+  step("The child asks for a CA certificate", "The child creates or recovers its own private key. The root signs a certificate for that key. A requested 90-day lifetime can be shortened by the current parent's expiry.", "Read the returned certificate chain's actual expiry.", "", function(s) {storyStatus(s,"Child renewal needs the root","Existing child signer unchanged","root","This step explains the upstream exchange; example child records are unchanged.");});
+  step("The child publishes a JWT public key", "The root validates and appends the child's public key under its coordinated checks. It does not create a root KMS signer just to publish that JWK.", "One more public key to verify; zero new root signing keys for this append.", "good", function(s) {s.story.rootPublicKeys=2;storyStatus(s,"Root adds verification trust","Existing child signer unchanged","root","This is a separate illustrative root bundle count, not the child's KMS inventory.");});
+  step("The root becomes unavailable", "The child may be unable to renew its CA or publish its next JWT key. It continues using its installed signer if the chain has more than six minutes left and its own dependencies work.", "The root is not called for every child-issued SVID signature.", "warn", function(s) {storyStatus(s,"Child renewal or publication paused","Existing child signer can work","root","The installed child key and every certificate in its chain still limit readiness.");});
+  step("Retry the same public identity", "After the root recovers, the child retries with its saved publication identity and material. Fresh reads and blocked-key checks prevent stale trust from authorizing the append.", "Retrying publication does not require a new root key or a new JWK ID each time.", "good", function(s) {storyStatus(s,"Publication can resume","Existing child signer can work","root","Coordinated JWT publication allows 15 seconds at the root and 20 seconds at the child.");});
+});
+
+
 var scenarioSelect = document.getElementById("scenarioSelect");
 var stepSelect = document.getElementById("stepSelect");
 var previousButton = document.getElementById("previousButton");
 var nextButton = document.getElementById("nextButton");
-var scenarioIndex = 0;
+var scenarioIndex = 1; // Start with the ordinary rotation story.
 var stepIndex = 0;
 
 function element(name, className, text) {
@@ -5288,384 +4241,6 @@ function collectStepChanges(before, after) {
   return changes;
 }
 
-function hasChange(changes, area, fieldPart) {
-  return changes.some(function (change) {
-    return change.area === area && (!fieldPart || change.field.indexOf(fieldPart) !== -1);
-  });
-}
-
-function matchingChange(changes, area, fieldPart) {
-  return changes.find(function (change) {
-    return change.area === area && change.field.indexOf(fieldPart) !== -1;
-  });
-}
-
-function valueChangedTo(changes, area, fieldPart, value) {
-  return changes.some(function (change) {
-    return change.area === area &&
-      change.field.indexOf(fieldPart) !== -1 &&
-      change.afterRaw === value;
-  });
-}
-
-function numericIncrease(changes, field) {
-  return changes.some(function (change) {
-    return change.field === field &&
-      typeof change.beforeRaw === "number" &&
-      typeof change.afterRaw === "number" &&
-      change.afterRaw > change.beforeRaw;
-  });
-}
-
-function patchActionsForStep(currentStep, changes) {
-  if (currentStep.actions) {
-    return currentStep.actions;
-  }
-
-  if (currentStep.source !== "Custom patch") {
-    return [
-      currentStep.source + ": This state comes from outside the patch.",
-      currentStep.source + ": The patch only reads it unless this step says that it does more."
-    ];
-  }
-
-  if (!changes.length) {
-    var readOnlyText = currentStep.title + " " + currentStep.text;
-    if (/20 seconds|propagation window|early activation/i.test(readOnlyText)) {
-      return [
-        "CA manager: Reads the marker for the prepared key.",
-        "CA manager: This server waits 20 seconds after it sees that marker.",
-        "CA manager: If the wait is not over, it stops without taking the Lease or changing data."
-      ];
-    }
-    if (/tag result|pending token/i.test(readOnlyText)) {
-      return [
-        "AWS KMS key plugin: Looks for a KMS key with the saved create token.",
-        "AWS KMS key plugin: No key is visible yet, so it stops instead of creating a second key."
-      ];
-    }
-    if (/unknown authority|taint the current|revoke the current/i.test(readOnlyText)) {
-      return [
-        "Request check: Checks the requested CA record ID and status before taking the Lease.",
-        "Request check: The request is not allowed, so nothing changes."
-      ];
-    }
-    if (/valid issuance/i.test(readOnlyText)) {
-      return [
-        "Signing: Keeps using the K1 and K2 key ARNs already loaded in memory.",
-        "Signing: The rejected request leaves no work to recover or clean up."
-      ];
-    }
-    if (/datastore|tag discovery/i.test(readOnlyText)) {
-      return [
-        "Safety check: Cannot read a complete CA journal or KMS key list.",
-        "Safety check: Stops before taking the Lease or writing anything."
-      ];
-    }
-    return [
-      "No shared data changes: The patch only reads, checks, waits, signs, or rejects the request in this step."
-    ];
-  }
-
-  var actions = [];
-  function addAction(component, action) {
-    var existing = actions.find(function (item) {
-      return item.component === component;
-    });
-    if (existing) {
-      existing.items.push(action);
-      return;
-    }
-    actions.push({component: component, items: [action]});
-  }
-
-  if (hasChange(changes, "Server configuration")) {
-    addAction(
-      "Server settings",
-      "Checks the KeyManager name, cluster ID, KMS key identifier, and whether an existing CA journal is required before the server starts."
-    );
-  }
-
-  if (hasChange(changes, "Kubernetes Lease")) {
-    var primaryLeaseChange = hasChange(changes, "Kubernetes Lease", "primary[");
-    if (primaryLeaseChange && valueChangedTo(changes, "Kubernetes Lease", "].spec.holderIdentity", "")) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Releases the cluster lock so another server can use it."
-      );
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "If work may be unfinished, keeps the create UUID, current phase, and unfinished key-create entries so another server can continue it."
-      );
-    } else if (primaryLeaseChange && hasChange(changes, "Kubernetes Lease", "].spec.holderIdentity")) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Takes the cluster lock and saves which server owns it."
-      );
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Also saves a unique acquisition UUID, the phase (such as acquired or mutating), the 30-second timeout, and the lock times."
-      );
-    } else if (primaryLeaseChange) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Updates the Lease only if its resourceVersion has not changed since this server read it."
-      );
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "A server that held the lock earlier cannot overwrite newer Lease data."
-      );
-    }
-    if (hasChange(changes, "Kubernetes Lease", "related[")) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Shows another cluster's Lease. That Lease is separate and cannot be used by this cluster."
-      );
-    }
-    var pendingChange = matchingChange(changes, "Kubernetes Lease", ANNOTATION.pendingCreates);
-    if (pendingChange) {
-      var pendingBefore = parseAnnotation(pendingChange.beforeRaw, {});
-      var pendingAfter = parseAnnotation(pendingChange.afterRaw, {});
-      var pendingAdded = Object.keys(pendingAfter).filter(function (keyID) {
-        return pendingBefore[keyID] !== pendingAfter[keyID];
-      });
-      var pendingRemoved = Object.keys(pendingBefore).filter(function (keyID) {
-        return pendingAfter[keyID] === undefined;
-      });
-      if (pendingAdded.length) {
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "Before asking AWS to create a key, saves each new key name and create UUID."
-        );
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "If the AWS reply is lost, another server can use this UUID to find the same key."
-        );
-      }
-      if (pendingRemoved.length) {
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "After checking the KMS key and CA row, removes only the finished key name" +
-            (pendingRemoved.length === 1 ? "" : "s") +
-            " from rotation-pending-creates. Entries for other key-create attempts stay."
-        );
-      }
-    }
-    var retirementChange = matchingChange(changes, "Kubernetes Lease", ANNOTATION.pendingRetirements);
-    if (retirementChange) {
-      var retirementsBefore = parseRetirementAnnotation(retirementChange.beforeRaw);
-      var retirementsAfter = parseRetirementAnnotation(retirementChange.afterRaw);
-      var retirementBeforeIDs = retirementsBefore.map(retirementIdentity);
-      var retirementAfterIDs = retirementsAfter.map(retirementIdentity);
-      var retirementAdded = retirementsAfter.filter(function (record) {
-        return retirementBeforeIDs.indexOf(retirementIdentity(record)) === -1;
-      });
-      var retirementRemoved = retirementsBefore.filter(function (record) {
-        return retirementAfterIDs.indexOf(retirementIdentity(record)) === -1;
-      });
-      if (retirementAdded.length) {
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "In the same Lease update, saves the old-key deletion record, removes the finished entry from rotation-pending-creates, writes the prepared marker and completion UUID, and releases the Lease."
-        );
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "The deletion record contains the logical key ID, replacement create UUID, replacement public-key hash, and retire_after time. The replacement key's spire-retire-source tag supplies the old key ARN."
-        );
-      }
-      if (retirementRemoved.length) {
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "Removes only this old-key deletion record after a Lease owner proves that the key is already gone or is scheduled for deletion."
-        );
-      }
-      if (!retirementAdded.length && !retirementRemoved.length) {
-        addAction(
-          "Cluster lock (Kubernetes Lease)",
-          "Moves the saved deletion time later for the same old-key record. It never changes which replacement the record names or moves any deletion time earlier."
-        );
-      }
-    }
-    if (hasChange(changes, "Kubernetes Lease", ANNOTATION.completionToken)) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Writes a new completion UUID. Other servers see the new UUID and reload."
-      );
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "The completion UUID tells servers to reload. It does not give a server ownership of the Lease."
-      );
-    }
-    var preparedChange = matchingChange(changes, "Kubernetes Lease", ANNOTATION.preparedAuthorities);
-    if (preparedChange) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        preparedChange.afterRaw
-          ? "Records the IDs of keys that are published but are not signing yet. Each server must see this exact marker for 20 seconds before it can make one of those keys active."
-          : "Removes the prepared marker because there is no published key waiting to become active."
-      );
-    }
-    if (hasChange(changes, "Kubernetes Lease", ANNOTATION.taintTombstones)) {
-      addAction(
-        "Cluster lock (Kubernetes Lease)",
-        "Records that this old public key must stay blocked. If a server later reloads older data, it still refuses this key."
-      );
-    }
-  }
-
-  if (hasChange(changes, "AWS KMS") || hasChange(changes, "AWS call counters")) {
-    if (numericIncrease(changes, "counters.createKey")) {
-      addAction(
-        "AWS KMS key plugin",
-        "Calls CreateKey once, after the create token is saved in the Lease."
-      );
-      addAction(
-        "AWS KMS key plugin",
-        "Checks that AWS returned a physical key ARN, the expected public key, and this cluster's tags."
-      );
-    }
-    if (hasChange(changes, "AWS KMS", "aliases[")) {
-      addAction(
-        "AWS KMS key plugin",
-        "Changes the KMS alias shown below so it points to the exact key ARN shown below."
-      );
-      addAction(
-        "AWS KMS key plugin",
-        "Signing uses the saved key ARN, so a later alias change cannot switch the signing key."
-      );
-    }
-    if (/alias|physical key|KMS inventory/i.test(currentStep.text) &&
-        !hasChange(changes, "AWS KMS", "aliases[")) {
-      addAction(
-        "AWS KMS key plugin",
-        "Reads the existing aliases and physical keys and checks them. It does not change them in this step."
-      );
-    }
-    if (hasChange(changes, "AWS KMS", ".tags[")) {
-      addAction(
-        "AWS KMS key plugin",
-        "Updates tags on the physical key. They show its cluster and logical key, the last report time, and whether it is being created or waiting for deletion."
-      );
-    }
-    if (valueChangedTo(changes, "AWS KMS", ".state", "PendingDeletion") ||
-        numericIncrease(changes, "counters.scheduleDeletion")) {
-      addAction(
-        "AWS KMS key plugin",
-        "Reads the old key by full ARN first. If its state is Enabled or Disabled, sends no more than one ScheduleKeyDeletion request for this attempt, with AWS SDK retries turned off."
-      );
-      addAction(
-        "AWS KMS key plugin",
-        "A complete PendingDeletion response means AWS accepted the request. If the response is an error or has missing fields, reads the key again by full ARN. PendingDeletion or NotFound, which means the key is gone, is enough proof. Any other result keeps the old-key deletion record in the Lease."
-      );
-    }
-  }
-
-  if (hasChange(changes, "CA journal")) {
-    var selectedJournal = matchingChange(changes, "CA journal", "journal.selectedId");
-    if (selectedJournal) {
-      addAction(
-        "CA journal",
-        selectedJournal.beforeRaw
-          ? "Finds the CA record whose public key matches the KMS key. If there is no clear match, it stops."
-          : "Creates the first CA journal and saves its database ID before the server starts signing."
-      );
-    }
-    if (hasChange(changes, "CA journal", "journal.rows[")) {
-      if (!selectedJournal || selectedJournal.beforeRaw) {
-        addAction(
-          "CA journal",
-          "Saves the CA status change before it changes the signer used by this server."
-        );
-      }
-      addAction(
-        "CA journal",
-        "The table shows the KMS ARN used for signing. The database stores the public key or certificate, not that ARN."
-      );
-    }
-    if (hasChange(changes, "CA journal", "activeX509AuthorityId")) {
-      addAction(
-        "CA journal",
-        "Changes the active X.509 CA ID so every server uses the same CA certificate as current."
-      );
-    }
-  }
-  if (!hasChange(changes, "CA journal") && /journal/i.test(currentStep.text)) {
-    addAction(
-      "CA journal",
-      "Reads and checks the existing CA journal. It does not change the journal in this step."
-    );
-  }
-
-  if (hasChange(changes, "Trust bundle and OIDC source")) {
-    var changesX509 = hasChange(changes, "Trust bundle and OIDC source", "X509 certificate|");
-    var changesJWT = hasChange(changes, "Trust bundle and OIDC source", "JWT JWK|");
-    addAction(
-      "Published certificates and JWKs",
-      "Changes the certificate or public key that clients use to verify credentials."
-    );
-    if (changesX509) {
-      addAction(
-        "Published certificates and JWKs",
-        "The SPIRE bundle and Agents receive the X.509 certificate change."
-      );
-    }
-    if (changesJWT) {
-      addAction(
-        "Published certificates and JWKs",
-        "OIDC publishes the JWK change after its next successful refresh."
-      );
-    }
-  }
-
-  if (hasChange(changes, "SPIRE server memory")) {
-    if (hasChange(changes, "SPIRE server memory", "Signer")) {
-      addAction(
-        "SPIRE server memory",
-        "Changes its signer only after the CA record, the certificate or JWK shared with clients, and the KMS public key all match."
-      );
-      addAction(
-        "SPIRE server memory",
-        "The signer uses the full physical key ARN."
-      );
-    }
-    if (hasChange(changes, "SPIRE server memory", "observedCompletion")) {
-      addAction(
-        "SPIRE server memory",
-        "Remembers the last completion token it saw after reloading. This value is only in memory."
-      );
-    }
-    if (hasChange(changes, "SPIRE server memory", ".ready")) {
-      var readinessChanges = changes.filter(function (change) {
-        return change.area === "SPIRE server memory" && change.field.indexOf(".ready") !== -1;
-      });
-      var allReady = readinessChanges.every(function (change) {
-        return change.afterRaw === true;
-      });
-      var allUnready = readinessChanges.every(function (change) {
-        return change.afterRaw === false;
-      });
-      addAction(
-        "SPIRE server memory",
-        allReady
-          ? "Becomes ready after loading valid CA and KMS key data and passing its health checks."
-          : allUnready
-            ? "Becomes unready because it could not load valid CA and KMS key data or a health check failed."
-            : "Updates each server's readiness after checking its loaded CA and KMS key data and health."
-      );
-    }
-    if (!hasChange(changes, "SPIRE server memory", "Signer") &&
-        !hasChange(changes, "SPIRE server memory", "observedCompletion") &&
-        !hasChange(changes, "SPIRE server memory", ".ready")) {
-      addAction(
-        "SPIRE server memory",
-        "Only its in-memory status changes. No shared data changes."
-      );
-    }
-  }
-
-  return actions;
-}
-
 function displayAreaName(area) {
   var names = {
     "SPIRE server memory": "SPIRE server memory",
@@ -5773,7 +4348,10 @@ function renderActionGroups(target, rawActions) {
 function renderStepDetails(currentStep) {
   var changes = collectStepChanges(currentStep.beforeState, currentStep.state);
   var actionsTarget = document.getElementById("patchActions");
-  renderActionGroups(actionsTarget, patchActionsForStep(currentStep, changes));
+  renderActionGroups(actionsTarget, currentStep.actions || []);
+  document.getElementById("technicalStory").replaceChildren(
+    element("p", "", currentStep.text), element("p", "", "Result: " + currentStep.outcome)
+  );
 
   var summary = changes.length === 0
     ? "No field values changed"
@@ -5984,10 +4562,14 @@ function render() {
   document.getElementById("scenarioSummary").textContent = scenario.summary;
   document.getElementById("stepTitle").textContent =
     "Step " + (stepIndex + 1) + " of " + scenario.steps.length + ": " + currentStep.title;
-  document.getElementById("stepText").textContent = currentStep.text;
-  document.getElementById("stepOutcome").textContent = "Result: " + currentStep.outcome;
+  document.getElementById("stepText").textContent = currentStep.plainText;
+  document.getElementById("stepOutcome").textContent = "Result: " + currentStep.plainOutcome;
   document.getElementById("stepBox").className = "step-box " + currentStep.tone;
 
+  renderOverview(currentStep);
+  var progress = document.getElementById("stepProgress");
+  progress.max = scenario.steps.length;
+  progress.value = stepIndex + 1;
   renderStepDetails(currentStep);
   renderScope(state);
   renderReplicas(state);
@@ -6035,6 +4617,7 @@ function buildStepSelect() {
 }
 
 scenarioSelect.addEventListener("change", function () {
+  stopPlayback();
   scenarioIndex = Number(scenarioSelect.value);
   stepIndex = 0;
   buildStepSelect();
@@ -6042,11 +4625,13 @@ scenarioSelect.addEventListener("change", function () {
 });
 
 stepSelect.addEventListener("change", function () {
+  stopPlayback();
   stepIndex = Number(stepSelect.value);
   render();
 });
 
 previousButton.addEventListener("click", function () {
+  stopPlayback();
   if (stepIndex > 0) {
     stepIndex -= 1;
     render();
@@ -6054,11 +4639,181 @@ previousButton.addEventListener("click", function () {
 });
 
 nextButton.addEventListener("click", function () {
+  stopPlayback();
   if (stepIndex < SCENARIOS[scenarioIndex].steps.length - 1) {
     stepIndex += 1;
     render();
   }
 });
+
+// Render a plain-language overview from the existing scenario records.
+function keyLabel(arn) {
+  return Object.keys(KEY).find(function(name) {return KEY[name].arn === arn;}) || "not loaded";
+}
+
+function extraAttemptsUsed(state) {
+  var publications = parseAnnotation(state.lease.annotations[ANNOTATION.pendingPublications], {});
+  var history = publications._spire_create_recovery;
+  return history && history.attempts ? history.attempts.length : 0;
+}
+
+function overviewStatus(state) {
+  var ready = state.replicas.filter(function(r) {return r.ready;}).length;
+  var owner = state.replicas.find(function(r) {return r.leaseHolder;});
+  return {
+    rotation: state.story ? state.story.rotation : owner ? owner.name + " holds the lock" : state.lease.holderIdentity ? "Previous owner's Lease is still recorded" : "No server holds the lock",
+    signing: state.story ? state.story.signing : ready + " of " + state.replicas.length + " servers ready in this example"
+  };
+}
+
+function renderOverview(currentStep) {
+  var state = currentStep.state;
+  var before = currentStep.beforeState;
+  var story = state.story || {};
+  var status = overviewStatus(state);
+  var board = document.getElementById("flowBoard");
+  board.replaceChildren();
+  var heading = element("div", "flow-heading");
+  heading.appendChild(element("h3", "", "What this looks like"));
+  heading.appendChild(element("p", "", "Blue boxes show what changed or what this step explains."));
+  board.appendChild(heading);
+  var statuses = element("div", "flow-status");
+  [["Rotation", status.rotation], ["Signing and health", status.signing]].forEach(function(entry) {
+    var line = element("div", "status-line");
+    line.appendChild(element("span", "", entry[0]));
+    line.appendChild(element("strong", "", entry[1]));
+    statuses.appendChild(line);
+  });
+  board.appendChild(statuses);
+
+  if (story.nested) {
+    var map = element("div", "nested-map");
+    var root = element("div", "nested-root" + (story.focus === "root" ? " focus" : ""));
+    root.appendChild(element("strong", "", "Root cluster"));
+    root.appendChild(element("span", "", "Example bundle: " + story.rootPublicKeys + " JWT public keys · " + story.rootKeysCreated + " root keys created by the child append"));
+    map.appendChild(root);
+    map.appendChild(element("div", "nested-link", "↓ Issues child CA certificates and accepts child JWT public keys ↓"));
+    var children = element("div", "nested-children");
+    ["Subordinate 01 — records shown below", "Subordinate 02 — independent keys"].forEach(function(name) {
+      var child = element("div");
+      child.appendChild(element("strong", "", name));
+      child.appendChild(element("span", "", "Own private keys, own rotation lock"));
+      children.appendChild(child);
+    });
+    map.appendChild(children);
+    board.appendChild(map);
+  }
+
+  var grid = element("div", "flow-grid");
+  function card(id, title, changed) {
+    var focused = story.focus === id || changed;
+    var box = element("section", "flow-card" + (focused ? " focus" : ""));
+    var label = element("h4", "", title);
+    if (focused) label.appendChild(element("span", "focus-label", "This step"));
+    box.appendChild(label);
+    grid.appendChild(box);
+    return box;
+  }
+
+  var servers = card("servers", "Servers · who is ready?", !sameData(before.replicas, state.replicas));
+  state.replicas.forEach(function(r) {
+    var chip = element("div", "server-chip" + (r.ready ? "" : " not-ready"));
+    chip.appendChild(element("strong", "", r.name));
+    chip.appendChild(element("span", "", r.ready ? "Ready" : "Not ready"));
+    chip.appendChild(element("span", "", "X.509 " + keyLabel(r.x509 && r.x509.arn) + " · JWT " + keyLabel(r.jwt && r.jwt.arn)));
+    servers.appendChild(chip);
+  });
+  servers.appendChild(element("p", "flow-detail", "K1, K2, and so on mean physical keys. A server signs with the exact key it loaded."));
+
+  var lock = card("lease", "Rotation lock · who may change keys?", !sameData(before.lease, state.lease));
+  var owner = state.replicas.find(function(r) {return r.leaseHolder;});
+  lock.appendChild(element("p", "", owner ? owner.name + " owns this step" : state.lease.holderIdentity ? "Waiting for the recorded owner or safe takeover" : "No current owner"));
+  var pending = Object.keys(parseAnnotation(state.lease.annotations[ANNOTATION.pendingCreates], {})).length;
+  var retirements = parseRetirementAnnotation(state.lease.annotations[ANNOTATION.pendingRetirements]).length;
+  lock.appendChild(element("p", "flow-detail", pending + " unresolved creation record(s) · " + retirements + " saved cleanup record(s)"));
+  var publications = parseAnnotation(state.lease.annotations[ANNOTATION.pendingPublications], {});
+  Object.keys(publications).filter(function(keyID) {return keyID !== "_spire_create_recovery";}).forEach(function(keyID) {
+    var publication = publications[keyID];
+    lock.appendChild(element("p", "flow-detail", keyID + ": " + (publication.state === "sealed" ? "exact public key saved" : "public ID and lifetime saved") + ". These stay the same across retries."));
+  });
+  lock.appendChild(element("p", "flow-detail", "The saved history survives a process restart. Signing does not take this lock for every request."));
+
+  var database = card("database", "Database · which key comes next?", !sameData(before.journal, state.journal) || !sameData(before.trust, state.trust));
+  var active = state.journal.rows.filter(function(row) {return row.status === "ACTIVE";});
+  var prepared = state.journal.rows.filter(function(row) {return row.status === "PREPARED";});
+  database.appendChild(element("p", "", "Current: " + (active.map(function(row) {return row.type + " " + keyLabel(row.keyArn);}).join(" · ") || "none yet")));
+  database.appendChild(element("p", "", "Prepared: " + (prepared.map(function(row) {return row.type + " " + keyLabel(row.keyArn);}).join(" · ") || "none")));
+  database.appendChild(element("p", "flow-detail", "Prepared means published for verification, before use for signing. Servers reload after a completed change."));
+
+  var kms = card("kms", "AWS KMS · the physical keys", !sameData(before.keys, state.keys) || !sameData(before.aliases, state.aliases));
+  state.keys.forEach(function(key) {
+    var aliased = state.aliases.some(function(alias) {return alias.targetArn === key.arn;});
+    var chip = element("div", "key-chip" + (key.state === "PendingDeletion" ? " pending" : ""));
+    var shape = element("span", "key-shape");
+    shape.setAttribute("aria-hidden", "true");
+    chip.appendChild(shape);
+    chip.appendChild(element("strong", "", key.name));
+    chip.appendChild(element("span", "", key.logicalKey + " · " + key.state + (aliased ? " · has alias" : " · no alias")));
+    kms.appendChild(chip);
+  });
+  if (!state.keys.length) kms.appendChild(element("p", "", "No keys yet"));
+  var created = state.counters.createKey - before.counters.createKey;
+  var deleted = state.counters.scheduleDeletion - before.counters.scheduleDeletion;
+  kms.appendChild(element("p", "flow-detail", "This step: " + created + " illustrated key creation(s), " + deleted + " deletion request(s). These are example records, not a live AWS inventory."));
+  board.appendChild(grid);
+
+  if (state.story && /attempt|creation|quota|limit/i.test(SCENARIOS[scenarioIndex].title)) {
+    var used = extraAttemptsUsed(state);
+    var quota = element("div", "quota-box");
+    quota.appendChild(element("strong", "", used + " of 10 extra authorizations spent"));
+    var slots = element("div", "quota-slots");
+    slots.setAttribute("aria-hidden", "true");
+    for (var i=0;i<10;i++) slots.appendChild(element("span", "quota-slot" + (i<used ? " used" : "")));
+    quota.appendChild(slots);
+    quota.appendChild(element("p", "", "Shared across signing slots and saved across restarts. This counts extra recovery permission, not normal rotations or physical keys."));
+    board.appendChild(quota);
+  }
+  if (story.note) board.appendChild(element("p", "flow-note", story.note));
+}
+
+var playButton = document.getElementById("playButton");
+var playTimer = null;
+function stopPlayback() {
+  if (playTimer !== null) window.clearInterval(playTimer);
+  playTimer = null;
+  playButton.textContent = "▶ Play";
+  playButton.setAttribute("aria-pressed", "false");
+}
+
+playButton.addEventListener("click", function() {
+  if (playTimer !== null) {stopPlayback(); return;}
+  if (stepIndex === SCENARIOS[scenarioIndex].steps.length - 1) stepIndex = 0;
+  playButton.textContent = "Ⅱ Pause";
+  playButton.setAttribute("aria-pressed", "true");
+  render();
+  playTimer = window.setInterval(function() {
+    stepIndex += 1;
+    render();
+    if (stepIndex === SCENARIOS[scenarioIndex].steps.length - 1) stopPlayback();
+  }, 6500);
+});
+
+document.getElementById("restartButton").addEventListener("click", function() {
+  stopPlayback(); stepIndex = 0; render();
+});
+document.addEventListener("visibilitychange", function() {if (document.hidden) stopPlayback();});
+
+function revealGuideTarget() {
+  var target = document.getElementById(window.location.hash.slice(1));
+  var guide = document.getElementById("design-notes");
+  if (target && guide.contains(target)) {
+    guide.open = true;
+    target.scrollIntoView({block:"start"});
+  }
+}
+window.addEventListener("hashchange", revealGuideTarget);
+revealGuideTarget();
+
 
 buildScenarioSelect();
 buildStepSelect();
